@@ -1,83 +1,27 @@
 import authService from '../services/authService.js';
 
-// Получение реального IP клиента
 async function getClientIp(req) {
     const headers = [
         req.get('CF-Connecting-IP'),
-        req.get('Client-IP'),
         req.get('X-Forwarded-For'),
-        req.get('X-Forwarded'),
-        req.get('X-Cluster-Client-IP'),
-        req.get('Forwarded-For'),
-        req.get('Forwarded')
+        req.get('X-Real-IP')
     ];
 
     for (const header of headers) {
         if (header) {
-            const ips = header.split(',').map(ip => ip.trim());
-            for (const ip of ips) {
-                if (isValidPublicIp(ip)) {
-                    console.log('🌐 Real IP found in headers:', ip);
-                    return ip;
-                }
+            const ip = header.split(',')[0].trim();
+            if (ip && !ip.startsWith('192.168.') && !ip.startsWith('10.')) {
+                return ip;
             }
         }
     }
 
-    let fallbackIp = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress;
-
-    if (!fallbackIp || ['127.0.0.1', '::1', 'localhost'].includes(fallbackIp) || fallbackIp.startsWith('192.168.') || fallbackIp.startsWith('10.')) {
-        const externalIp = await getExternalIp();
-        if (externalIp) {
-            console.log('🌐 External IP from service:', externalIp);
-            return externalIp;
-        }
-    }
-
-    console.log('🌐 Using fallback IP:', fallbackIp);
-    return fallbackIp || '127.0.0.1';
+    return req.ip || req.connection?.remoteAddress || '127.0.0.1';
 }
 
-function isValidPublicIp(ip) {
-    if (!ip) return false;
-
-    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-    if (!ipv4Regex.test(ip)) return false;
-
-    const parts = ip.split('.').map(Number);
-    if (
-        parts[0] === 10 ||
-        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-        (parts[0] === 192 && parts[1] === 168) ||
-        parts[0] === 127 ||
-        parts[0] === 0 ||
-        parts[0] >= 224
-    ) {
-        return false;
-    }
-
-    return true;
-}
-
-async function getExternalIp() {
-    try {
-        const response = await fetch('https://api.ipify.org?format=text', { timeout: 5000 });
-        const ip = await response.text();
-        const cleanIp = ip.trim();
-
-        if (isValidPublicIp(cleanIp)) {
-            return cleanIp;
-        }
-    } catch (error) {
-        console.error('❌ External IP service error:', error.message);
-    }
-    return null;
-}
-
-// ВАЖНО: export const перед каждой функцией!
 export const login = async (req, res) => {
     try {
-        const { walletAddress } = req.body;
+        const { walletAddress, extendedSession } = req.body;
 
         if (!walletAddress || walletAddress.length !== 44) {
             return res.status(400).json({
@@ -87,9 +31,23 @@ export const login = async (req, res) => {
         }
 
         const clientIp = await getClientIp(req);
-        const result = await authService.login(walletAddress, clientIp);
+        const userAgent = req.get('User-Agent');
 
-        res.json(result);
+        const result = await authService.login(walletAddress, clientIp, userAgent, extendedSession);
+
+        if (result.success) {
+            res.json({
+                ...result,
+                features: {
+                    multiDevice: true,
+                    autoExtension: true,
+                    hmacSecurity: true
+                }
+            });
+        } else {
+            res.status(401).json(result);
+        }
+
     } catch (error) {
         console.error('❌ Login error:', error);
         res.status(500).json({
@@ -111,9 +69,22 @@ export const validate = async (req, res) => {
         }
 
         const clientIp = await getClientIp(req);
-        const result = await authService.validateSession(walletAddress, sessionKey, clientIp);
+        const userAgent = req.get('User-Agent');
 
-        res.json(result);
+        const result = await authService.validateSession(walletAddress, sessionKey, clientIp, userAgent);
+
+        if (result.success) {
+            res.json({
+                ...result,
+                security: {
+                    hmacVerified: true,
+                    deviceBound: true
+                }
+            });
+        } else {
+            res.status(401).json(result);
+        }
+
     } catch (error) {
         console.error('❌ Validation error:', error);
         res.status(500).json({
@@ -125,6 +96,35 @@ export const validate = async (req, res) => {
 
 export const logout = async (req, res) => {
     try {
+        const { walletAddress, deviceHash, allDevices } = req.body;
+
+        if (!walletAddress) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing wallet address'
+            });
+        }
+
+        // Если allDevices=true, то deviceHash игнорируется и логаут со всех устройств
+        const result = await authService.logout(walletAddress, allDevices ? null : deviceHash);
+
+        res.json({
+            ...result,
+            loggedOut: allDevices ? 'all_devices' : 'current_device'
+        });
+
+    } catch (error) {
+        console.error('❌ Logout error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+};
+
+// Новый эндпоинт: получить все активные сессии
+export const getSessions = async (req, res) => {
+    try {
         const { walletAddress } = req.body;
 
         if (!walletAddress) {
@@ -134,10 +134,33 @@ export const logout = async (req, res) => {
             });
         }
 
-        const result = await authService.logout(walletAddress);
-        res.json(result);
+        const sessions = await authService.getActiveSessions(walletAddress);
+
+        res.json({
+            success: true,
+            sessions,
+            count: sessions.length
+        });
+
     } catch (error) {
-        console.error('❌ Logout error:', error);
+        console.error('❌ Get sessions error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+};
+
+// Админ эндпоинт: статистика безопасности
+export const getSecurityStats = async (req, res) => {
+    try {
+        const stats = await authService.getSecurityStats();
+        res.json({
+            success: true,
+            stats
+        });
+    } catch (error) {
+        console.error('❌ Security stats error:', error);
         res.status(500).json({
             success: false,
             error: 'Server error'
