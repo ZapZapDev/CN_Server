@@ -11,6 +11,33 @@ class AuthService {
     async login(walletAddress, clientIp) {
         console.log('🔐 Login attempt:', walletAddress.slice(0, 8) + '...', 'from IP:', clientIp);
 
+        // ИСПРАВЛЕНИЕ: Сначала ищем пользователя с таким же IP
+        const existingUserWithSameIp = await User.findOne({
+            where: { last_ip: clientIp }
+        });
+
+        // Если есть пользователь с таким IP, но другим кошельком
+        if (existingUserWithSameIp && existingUserWithSameIp.sol_wallet !== walletAddress) {
+            console.log('🔄 Same IP, different wallet. Updating user record...');
+
+            const newSessionKey = this.generateSessionKey();
+
+            // Обновляем существующую запись с новым кошельком и сессией
+            await existingUserWithSameIp.update({
+                sol_wallet: walletAddress,
+                session_key: newSessionKey,
+                last_ip: clientIp
+            });
+
+            console.log('✅ User record updated with new wallet');
+            return {
+                success: true,
+                sessionKey: newSessionKey,
+                isNewSession: true
+            };
+        }
+
+        // Ищем пользователя по кошельку
         let user = await User.findOne({
             where: { sol_wallet: walletAddress }
         });
@@ -25,6 +52,12 @@ class AuthService {
                 last_ip: clientIp
             });
             console.log('✅ New user created');
+
+            return {
+                success: true,
+                sessionKey: newSessionKey,
+                isNewSession: true
+            };
         } else {
             // Проверяем IP
             if (user.last_ip !== clientIp) {
@@ -34,22 +67,26 @@ class AuthService {
                     session_key: newSessionKey,
                     last_ip: clientIp
                 });
-            } else {
-                console.log('✅ Same IP, existing session');
-                // Тот же IP - возвращаем существующий ключ
+
                 return {
                     success: true,
-                    sessionKey: user.session_key,
+                    sessionKey: newSessionKey,
+                    isNewSession: true
+                };
+            } else {
+                console.log('✅ Same IP and wallet, existing session');
+                // ИСПРАВЛЕНИЕ: Всегда генерируем новый ключ для надежности
+                await user.update({
+                    session_key: newSessionKey
+                });
+
+                return {
+                    success: true,
+                    sessionKey: newSessionKey,
                     isNewSession: false
                 };
             }
         }
-
-        return {
-            success: true,
-            sessionKey: newSessionKey,
-            isNewSession: true
-        };
     }
 
     // Валидация сессии
