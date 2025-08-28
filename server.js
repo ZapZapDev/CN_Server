@@ -5,8 +5,20 @@ import express from 'express';
 import { config } from './src/config/index.js';
 import paymentController from './src/controllers/paymentController.js';
 import { login, validate, logout, getSessions, getSecurityStats } from './src/controllers/authController.js';
+import {
+    createMarketNetwork,
+    getMarketNetworks,
+    updateMarketNetwork,
+    deleteMarketNetwork,
+    createMarket,
+    getMarkets,
+    updateMarket,
+    deleteMarket
+} from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
+import MarketNetwork from './src/models/MarketNetwork.js';
+import Market from './src/models/Market.js';
 import authService from './src/services/authService.js';
 
 const app = express();
@@ -15,7 +27,7 @@ app.set('trust proxy', true);
 
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
     next();
@@ -33,8 +45,15 @@ async function initDatabase() {
         await sequelize.authenticate();
         console.log('✅ Database connected');
 
+        // Синхронизируем модели в правильном порядке
         await User.sync({ force: false, alter: true });
         console.log('✅ Users table ready (multi-device support)');
+
+        await MarketNetwork.sync({ force: false, alter: true });
+        console.log('✅ MarketNetworks table ready');
+
+        await Market.sync({ force: false, alter: true });
+        console.log('✅ Markets table ready');
 
         // Показываем SERVER_SECRET статус (без значения!)
         const hasSecret = !!process.env.SERVER_SECRET;
@@ -68,7 +87,8 @@ app.get('/', (req, res) => {
             multiDevice: true,
             hmacSecurity: true,
             autoExtension: true,
-            ipFlexible: true
+            ipFlexible: true,
+            merchantSystem: true
         }
     });
 });
@@ -82,6 +102,11 @@ app.get('/api/test', (req, res) => {
             hmacValidation: 'enabled',
             autoExtension: 'enabled',
             ipBinding: 'flexible'
+        },
+        merchant: {
+            marketNetworks: 'enabled',
+            markets: 'enabled',
+            ownershipValidation: 'enabled'
         }
     });
 });
@@ -90,7 +115,20 @@ app.get('/api/test', (req, res) => {
 app.post('/api/auth/login', login);
 app.post('/api/auth/validate', validate);
 app.post('/api/auth/logout', logout);
-app.post('/api/auth/sessions', getSessions); // Получить все сессии кошелька
+app.post('/api/auth/sessions', getSessions);
+
+// MERCHANT ENDPOINTS
+// MarketNetwork CRUD
+app.post('/api/merchant/networks', createMarketNetwork);
+app.post('/api/merchant/networks/list', getMarketNetworks);
+app.put('/api/merchant/networks/:id', updateMarketNetwork);
+app.delete('/api/merchant/networks/:id', deleteMarketNetwork);
+
+// Market CRUD
+app.post('/api/merchant/markets', createMarket);
+app.post('/api/merchant/markets/:networkId/list', getMarkets);
+app.put('/api/merchant/markets/:id', updateMarket);
+app.delete('/api/merchant/markets/:id', deleteMarket);
 
 // ADMIN ENDPOINTS
 app.get('/api/admin/security/stats', getSecurityStats);
@@ -125,6 +163,10 @@ initDatabase().then(() => {
         console.log('  ✅ Flexible IP handling');
         console.log('  ✅ Suspicious activity logging');
         console.log('  ⏰ Session TTL: 2-7 days');
+        console.log('🏪 MERCHANT FEATURES:');
+        console.log('  ✅ Secure MarketNetwork CRUD');
+        console.log('  ✅ Secure Market CRUD');
+        console.log('  ✅ Wallet ownership validation');
         console.log('💡 Perfect balance: Security + Usability');
 
         startCleanup();
