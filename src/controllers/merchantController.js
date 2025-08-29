@@ -2,6 +2,7 @@
 import User from '../models/User.js';
 import MarketNetwork from '../models/MarketNetwork.js';
 import Market from '../models/Market.js';
+import Table from '../models/Table.js';
 import authService from '../services/authService.js';
 
 // Middleware для проверки сессии
@@ -104,7 +105,7 @@ export async function getMarketNetworks(req, res) {
                 as: 'markets',
                 where: { is_active: true },
                 required: false,
-                attributes: ['id', 'name', 'location', 'created_at']
+                attributes: ['id', 'name', 'created_at']
             }],
             order: [['created_at', 'DESC']]
         });
@@ -246,7 +247,7 @@ export async function deleteMarketNetwork(req, res) {
 
 export async function createMarket(req, res) {
     try {
-        const { name, location, marketNetworkId } = req.body;
+        const { name, marketNetworkId } = req.body;
 
         if (!name || !name.trim() || !marketNetworkId) {
             return res.status(400).json({
@@ -281,7 +282,6 @@ export async function createMarket(req, res) {
 
         const market = await Market.create({
             name: name.trim(),
-            location: location?.trim() || null,
             user_id: user.id,
             market_network_id: network.id
         });
@@ -293,7 +293,6 @@ export async function createMarket(req, res) {
             data: {
                 id: market.id,
                 name: market.name,
-                location: market.location,
                 marketNetworkId: market.market_network_id,
                 createdAt: market.created_at
             }
@@ -342,6 +341,13 @@ export async function getMarkets(req, res) {
                 user_id: user.id,
                 is_active: true
             },
+            include: [{
+                model: Table,
+                as: 'tables',
+                where: { is_active: true },
+                required: false,
+                attributes: ['id', 'number', 'created_at']
+            }],
             order: [['created_at', 'DESC']]
         });
 
@@ -350,8 +356,8 @@ export async function getMarkets(req, res) {
             data: markets.map(market => ({
                 id: market.id,
                 name: market.name,
-                location: market.location,
-                createdAt: market.created_at
+                createdAt: market.created_at,
+                tables: market.tables || []
             }))
         });
 
@@ -367,7 +373,7 @@ export async function getMarkets(req, res) {
 export async function updateMarket(req, res) {
     try {
         const { id } = req.params;
-        const { name, location } = req.body;
+        const { name } = req.body;
 
         if (!name || !name.trim()) {
             return res.status(400).json({
@@ -400,8 +406,7 @@ export async function updateMarket(req, res) {
         }
 
         await market.update({
-            name: name.trim(),
-            location: location?.trim() || null
+            name: name.trim()
         });
 
         console.log('✅ Market updated:', market.id);
@@ -411,7 +416,6 @@ export async function updateMarket(req, res) {
             data: {
                 id: market.id,
                 name: market.name,
-                location: market.location,
                 updatedAt: market.updated_at
             }
         });
@@ -463,6 +467,182 @@ export async function deleteMarket(req, res) {
 
     } catch (error) {
         console.error('❌ Delete Market error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+// =================== TABLES ===================
+
+export async function createTable(req, res) {
+    try {
+        const { marketId } = req.body;
+
+        if (!marketId) {
+            return res.status(400).json({
+                success: false,
+                error: 'MarketId is required'
+            });
+        }
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Проверяем, что Market принадлежит пользователю
+        const market = await Market.findOne({
+            where: {
+                id: parseInt(marketId),
+                user_id: user.id,
+                is_active: true
+            }
+        });
+
+        if (!market) {
+            return res.status(404).json({
+                success: false,
+                error: 'Market not found'
+            });
+        }
+
+        // Находим максимальный номер стола в этом маркете
+        const maxTable = await Table.findOne({
+            where: {
+                market_id: market.id,
+                user_id: user.id,
+                is_active: true
+            },
+            order: [['number', 'DESC']]
+        });
+
+        const nextNumber = maxTable ? maxTable.number + 1 : 1;
+
+        const table = await Table.create({
+            number: nextNumber,
+            user_id: user.id,
+            market_id: market.id
+        });
+
+        console.log('✅ Table created:', table.id, 'number:', nextNumber, 'in market:', market.id);
+
+        res.json({
+            success: true,
+            data: {
+                id: table.id,
+                number: table.number,
+                marketId: table.market_id,
+                createdAt: table.created_at
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Create Table error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+export async function getTables(req, res) {
+    try {
+        const { marketId } = req.params;
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Проверяем доступ к маркету
+        const market = await Market.findOne({
+            where: {
+                id: parseInt(marketId),
+                user_id: user.id,
+                is_active: true
+            }
+        });
+
+        if (!market) {
+            return res.status(404).json({
+                success: false,
+                error: 'Market not found'
+            });
+        }
+
+        const tables = await Table.findAll({
+            where: {
+                market_id: market.id,
+                user_id: user.id,
+                is_active: true
+            },
+            order: [['number', 'ASC']]
+        });
+
+        res.json({
+            success: true,
+            data: tables.map(table => ({
+                id: table.id,
+                number: table.number,
+                createdAt: table.created_at
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Get Tables error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+export async function deleteTable(req, res) {
+    try {
+        const { id } = req.params;
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        const table = await Table.findOne({
+            where: {
+                id: parseInt(id),
+                user_id: user.id,
+                is_active: true
+            }
+        });
+
+        if (!table) {
+            return res.status(404).json({
+                success: false,
+                error: 'Table not found'
+            });
+        }
+
+        await table.update({ is_active: false });
+
+        console.log('🗑️ Table deleted:', table.id);
+
+        res.json({
+            success: true,
+            message: 'Table deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Delete Table error:', error);
         res.status(500).json({
             success: false,
             error: 'Server error'

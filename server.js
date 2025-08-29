@@ -13,12 +13,16 @@ import {
     createMarket,
     getMarkets,
     updateMarket,
-    deleteMarket
+    deleteMarket,
+    createTable,
+    getTables,
+    deleteTable
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
 import MarketNetwork from './src/models/MarketNetwork.js';
 import Market from './src/models/Market.js';
+import Table from './src/models/Table.js';
 import authService from './src/services/authService.js';
 
 const app = express();
@@ -55,6 +59,9 @@ async function initDatabase() {
         await Market.sync({ force: false, alter: true });
         console.log('✅ Markets table ready');
 
+        await Table.sync({ force: false, alter: true });
+        console.log('✅ Tables table ready');
+
         // Показываем SERVER_SECRET статус (без значения!)
         const hasSecret = !!process.env.SERVER_SECRET;
         console.log('🔐 HMAC Secret:', hasSecret ? 'CONFIGURED' : 'USING DEFAULT (set SERVER_SECRET in .env)');
@@ -82,13 +89,14 @@ app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "5.0.0-balanced",
+        version: "5.1.0-with-tables",
         features: {
             multiDevice: true,
             hmacSecurity: true,
             autoExtension: true,
             ipFlexible: true,
-            merchantSystem: true
+            merchantSystem: true,
+            tablesSupport: true
         }
     });
 });
@@ -106,6 +114,7 @@ app.get('/api/test', (req, res) => {
         merchant: {
             marketNetworks: 'enabled',
             markets: 'enabled',
+            tables: 'enabled',
             ownershipValidation: 'enabled'
         }
     });
@@ -130,6 +139,11 @@ app.post('/api/merchant/markets/:networkId/list', getMarkets);
 app.put('/api/merchant/markets/:id', updateMarket);
 app.delete('/api/merchant/markets/:id', deleteMarket);
 
+// Table CRUD
+app.post('/api/merchant/tables', createTable);
+app.post('/api/merchant/tables/:marketId/list', getTables);
+app.delete('/api/merchant/tables/:id', deleteTable);
+
 // ADMIN ENDPOINTS
 app.get('/api/admin/security/stats', getSecurityStats);
 
@@ -153,7 +167,7 @@ const port = config.port;
 
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
-        console.log('🚀 CryptoNow Balanced Server Started');
+        console.log('🚀 CryptoNow Server with Tables Support Started');
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
         console.log('⚖️ BALANCED SECURITY FEATURES:');
@@ -166,6 +180,8 @@ initDatabase().then(() => {
         console.log('🏪 MERCHANT FEATURES:');
         console.log('  ✅ Secure MarketNetwork CRUD');
         console.log('  ✅ Secure Market CRUD');
+        console.log('  ✅ Secure Table CRUD');
+        console.log('  ✅ Auto table numbering');
         console.log('  ✅ Wallet ownership validation');
         console.log('💡 Perfect balance: Security + Usability');
 

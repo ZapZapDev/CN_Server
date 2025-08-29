@@ -1,21 +1,20 @@
-// src/models/Market.js
+// src/models/Table.js
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 import User from './User.js';
-import MarketNetwork from './MarketNetwork.js';
+import Market from './Market.js';
 
-const Market = sequelize.define('Market', {
+const Table = sequelize.define('Table', {
     id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true
     },
-    name: {
-        type: DataTypes.STRING(255),
+    number: {
+        type: DataTypes.INTEGER,
         allowNull: false,
         validate: {
-            notEmpty: true,
-            len: [1, 255]
+            min: 1
         }
     },
     user_id: {
@@ -26,11 +25,11 @@ const Market = sequelize.define('Market', {
             key: 'id'
         }
     },
-    market_network_id: {
+    market_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-            model: MarketNetwork,
+            model: Market,
             key: 'id'
         }
     },
@@ -39,7 +38,7 @@ const Market = sequelize.define('Market', {
         defaultValue: true
     }
 }, {
-    tableName: 'markets',
+    tableName: 'tables',
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
@@ -48,36 +47,42 @@ const Market = sequelize.define('Market', {
             fields: ['user_id']
         },
         {
-            fields: ['market_network_id']
+            fields: ['market_id']
         },
         {
             fields: ['is_active']
         },
         {
-            fields: ['user_id', 'market_network_id']
+            fields: ['user_id', 'market_id']
+        },
+        {
+            // Уникальный номер стола в рамках одного маркета
+            unique: true,
+            fields: ['market_id', 'number'],
+            name: 'unique_market_table_number'
         }
     ]
 });
 
 // Связи
-Market.belongsTo(User, {
+Table.belongsTo(User, {
     foreignKey: 'user_id',
     as: 'user'
 });
 
-Market.belongsTo(MarketNetwork, {
-    foreignKey: 'market_network_id',
-    as: 'marketNetwork'
+Table.belongsTo(Market, {
+    foreignKey: 'market_id',
+    as: 'market'
 });
 
-User.hasMany(Market, {
+User.hasMany(Table, {
     foreignKey: 'user_id',
-    as: 'markets'
+    as: 'tables'
 });
 
-MarketNetwork.hasMany(Market, {
-    foreignKey: 'market_network_id',
-    as: 'markets'
+Market.hasMany(Table, {
+    foreignKey: 'market_id',
+    as: 'tables'
 });
 
-export default Market;
+export default Table;
