@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import express from 'express';
 import { config } from './src/config/index.js';
 import paymentController from './src/controllers/paymentController.js';
@@ -16,13 +13,17 @@ import {
     deleteMarket,
     createTable,
     getTables,
-    deleteTable
+    deleteTable,
+    createMenu,
+    getMenus,
+    deleteMenu
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
 import MarketNetwork from './src/models/MarketNetwork.js';
 import Market from './src/models/Market.js';
 import Table from './src/models/Table.js';
+import Menu from './src/models/Menu.js';
 import authService from './src/services/authService.js';
 
 const app = express();
@@ -62,6 +63,9 @@ async function initDatabase() {
         await Table.sync({ force: false, alter: true });
         console.log('✅ Tables table ready');
 
+        await Menu.sync({ force: false, alter: true });
+        console.log('✅ Menus table ready');
+
         // Показываем SERVER_SECRET статус (без значения!)
         const hasSecret = !!process.env.SERVER_SECRET;
         console.log('🔐 HMAC Secret:', hasSecret ? 'CONFIGURED' : 'USING DEFAULT (set SERVER_SECRET in .env)');
@@ -89,14 +93,15 @@ app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "5.1.0-with-tables",
+        version: "5.2.0-with-menus",
         features: {
             multiDevice: true,
             hmacSecurity: true,
             autoExtension: true,
             ipFlexible: true,
             merchantSystem: true,
-            tablesSupport: true
+            tablesSupport: true,
+            menusSupport: true
         }
     });
 });
@@ -115,6 +120,7 @@ app.get('/api/test', (req, res) => {
             marketNetworks: 'enabled',
             markets: 'enabled',
             tables: 'enabled',
+            menus: 'enabled',
             ownershipValidation: 'enabled'
         }
     });
@@ -143,6 +149,11 @@ app.delete('/api/merchant/markets/:id', deleteMarket);
 app.post('/api/merchant/tables', createTable);
 app.post('/api/merchant/tables/:marketId/list', getTables);
 app.delete('/api/merchant/tables/:id', deleteTable);
+
+// Menu CRUD
+app.post('/api/merchant/menus', createMenu);
+app.post('/api/merchant/menus/:networkId/list', getMenus);
+app.delete('/api/merchant/menus/:id', deleteMenu);
 
 // ADMIN ENDPOINTS
 app.get('/api/admin/security/stats', getSecurityStats);
@@ -181,6 +192,7 @@ initDatabase().then(() => {
         console.log('  ✅ Secure MarketNetwork CRUD');
         console.log('  ✅ Secure Market CRUD');
         console.log('  ✅ Secure Table CRUD');
+        console.log('  ✅ Secure Menu CRUD');
         console.log('  ✅ Auto table numbering');
         console.log('  ✅ Wallet ownership validation');
         console.log('💡 Perfect balance: Security + Usability');

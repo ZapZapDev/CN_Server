@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import MarketNetwork from '../models/MarketNetwork.js';
 import Market from '../models/Market.js';
 import Table from '../models/Table.js';
+import Menu from '../models/Menu.js';
 import authService from '../services/authService.js';
 
 // Middleware для проверки сессии
@@ -100,13 +101,22 @@ export async function getMarketNetworks(req, res) {
                 user_id: user.id,
                 is_active: true
             },
-            include: [{
-                model: Market,
-                as: 'markets',
-                where: { is_active: true },
-                required: false,
-                attributes: ['id', 'name', 'created_at']
-            }],
+            include: [
+                {
+                    model: Market,
+                    as: 'markets',
+                    where: { is_active: true },
+                    required: false,
+                    attributes: ['id', 'name', 'created_at']
+                },
+                {
+                    model: Menu,
+                    as: 'menus',
+                    where: { is_active: true },
+                    required: false,
+                    attributes: ['id', 'name', 'created_at']
+                }
+            ],
             order: [['created_at', 'DESC']]
         });
 
@@ -119,7 +129,8 @@ export async function getMarketNetworks(req, res) {
                 name: network.name,
                 description: network.description,
                 createdAt: network.created_at,
-                markets: network.markets || []
+                markets: network.markets || [],
+                menus: network.menus || []
             }))
         });
 
@@ -643,6 +654,170 @@ export async function deleteTable(req, res) {
 
     } catch (error) {
         console.error('❌ Delete Table error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+// =================== MENUS ===================
+
+export async function createMenu(req, res) {
+    try {
+        const { name, marketNetworkId } = req.body;
+
+        if (!name || !name.trim() || !marketNetworkId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Name and marketNetworkId are required'
+            });
+        }
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Проверяем, что MarketNetwork принадлежит пользователю
+        const network = await MarketNetwork.findOne({
+            where: {
+                id: parseInt(marketNetworkId),
+                user_id: user.id,
+                is_active: true
+            }
+        });
+
+        if (!network) {
+            return res.status(404).json({
+                success: false,
+                error: 'Network not found'
+            });
+        }
+
+        const menu = await Menu.create({
+            name: name.trim(),
+            user_id: user.id,
+            market_network_id: network.id
+        });
+
+        console.log('✅ Menu created:', menu.id, 'in network:', network.id);
+
+        res.json({
+            success: true,
+            data: {
+                id: menu.id,
+                name: menu.name,
+                marketNetworkId: menu.market_network_id,
+                createdAt: menu.created_at
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Create Menu error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+export async function getMenus(req, res) {
+    try {
+        const { networkId } = req.params;
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Проверяем доступ к сети
+        const network = await MarketNetwork.findOne({
+            where: {
+                id: parseInt(networkId),
+                user_id: user.id,
+                is_active: true
+            }
+        });
+
+        if (!network) {
+            return res.status(404).json({
+                success: false,
+                error: 'Network not found'
+            });
+        }
+
+        const menus = await Menu.findAll({
+            where: {
+                market_network_id: network.id,
+                user_id: user.id,
+                is_active: true
+            },
+            order: [['created_at', 'DESC']]
+        });
+
+        res.json({
+            success: true,
+            data: menus.map(menu => ({
+                id: menu.id,
+                name: menu.name,
+                createdAt: menu.created_at
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Get Menus error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+export async function deleteMenu(req, res) {
+    try {
+        const { id } = req.params;
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        const menu = await Menu.findOne({
+            where: {
+                id: parseInt(id),
+                user_id: user.id,
+                is_active: true
+            }
+        });
+
+        if (!menu) {
+            return res.status(404).json({
+                success: false,
+                error: 'Menu not found'
+            });
+        }
+
+        await menu.update({ is_active: false });
+
+        console.log('🗑️ Menu deleted:', menu.id);
+
+        res.json({
+            success: true,
+            message: 'Menu deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Delete Menu error:', error);
         res.status(500).json({
             success: false,
             error: 'Server error'
