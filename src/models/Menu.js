@@ -33,10 +33,6 @@ const Menu = sequelize.define('Menu', {
             model: MarketNetwork,
             key: 'id'
         }
-    },
-    is_active: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true
     }
 }, {
     tableName: 'menus',
@@ -49,9 +45,6 @@ const Menu = sequelize.define('Menu', {
         },
         {
             fields: ['market_network_id']
-        },
-        {
-            fields: ['is_active']
         },
         {
             fields: ['user_id', 'market_network_id']

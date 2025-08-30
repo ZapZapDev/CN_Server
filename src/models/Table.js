@@ -32,10 +32,6 @@ const Table = sequelize.define('Table', {
             model: Market,
             key: 'id'
         }
-    },
-    is_active: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true
     }
 }, {
     tableName: 'tables',
@@ -50,13 +46,9 @@ const Table = sequelize.define('Table', {
             fields: ['market_id']
         },
         {
-            fields: ['is_active']
-        },
-        {
             fields: ['user_id', 'market_id']
         },
         {
-            // Уникальный номер стола в рамках одного маркета
             unique: true,
             fields: ['market_id', 'number'],
             name: 'unique_market_table_number'

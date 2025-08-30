@@ -33,10 +33,6 @@ const Market = sequelize.define('Market', {
             model: MarketNetwork,
             key: 'id'
         }
-    },
-    is_active: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true
     }
 }, {
     tableName: 'markets',
@@ -49,9 +45,6 @@ const Market = sequelize.define('Market', {
         },
         {
             fields: ['market_network_id']
-        },
-        {
-            fields: ['is_active']
         },
         {
             fields: ['user_id', 'market_network_id']

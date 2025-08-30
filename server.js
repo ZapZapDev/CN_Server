@@ -6,17 +6,17 @@ import {
     createMarketNetwork,
     getMarketNetworks,
     updateMarketNetwork,
-    deleteMarketNetwork,
+    deleteMarketNetwork, // НОВОЕ
     createMarket,
     getMarkets,
     updateMarket,
-    deleteMarket,
+    deleteMarket, // НОВОЕ
     createTable,
     getTables,
-    deleteTable,
+    deleteTable, // НОВОЕ
     createMenu,
     getMenus,
-    deleteMenu
+    deleteMenu // НОВОЕ
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
@@ -66,7 +66,7 @@ async function initDatabase() {
         await Menu.sync({ force: false, alter: true });
         console.log('✅ Menus table ready');
 
-        // Показываем SERVER_SECRET статус (без значения!)
+        // Показываем SERVER_SECRET статус
         const hasSecret = !!process.env.SERVER_SECRET;
         console.log('🔐 HMAC Secret:', hasSecret ? 'CONFIGURED' : 'USING DEFAULT (set SERVER_SECRET in .env)');
 
@@ -75,7 +75,7 @@ async function initDatabase() {
     }
 }
 
-// Автоочистка каждые 8 часов (более мягкая)
+// Автоочистка каждые 8 часов
 function startCleanup() {
     console.log('🧹 Auto-cleanup enabled (every 8 hours)');
 
@@ -93,7 +93,7 @@ app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "5.2.0-with-menus",
+        version: "5.3.0-with-delete", // ОБНОВИЛИ ВЕРСИЮ
         features: {
             multiDevice: true,
             hmacSecurity: true,
@@ -101,7 +101,8 @@ app.get('/', (req, res) => {
             ipFlexible: true,
             merchantSystem: true,
             tablesSupport: true,
-            menusSupport: true
+            menusSupport: true,
+            deleteSupport: true // НОВОЕ
         }
     });
 });
@@ -109,7 +110,7 @@ app.get('/', (req, res) => {
 app.get('/api/test', (req, res) => {
     res.json({
         success: true,
-        message: 'Balanced security server ready',
+        message: 'Merchant server with delete functionality ready',
         auth: {
             multiDevice: 'enabled',
             hmacValidation: 'enabled',
@@ -121,12 +122,13 @@ app.get('/api/test', (req, res) => {
             markets: 'enabled',
             tables: 'enabled',
             menus: 'enabled',
-            ownershipValidation: 'enabled'
+            ownershipValidation: 'enabled',
+            deleteSupport: 'enabled' // НОВОЕ
         }
     });
 });
 
-// BALANCED AUTH ENDPOINTS
+// AUTH ENDPOINTS
 app.post('/api/auth/login', login);
 app.post('/api/auth/validate', validate);
 app.post('/api/auth/logout', logout);
@@ -137,23 +139,23 @@ app.post('/api/auth/sessions', getSessions);
 app.post('/api/merchant/networks', createMarketNetwork);
 app.post('/api/merchant/networks/list', getMarketNetworks);
 app.put('/api/merchant/networks/:id', updateMarketNetwork);
-app.delete('/api/merchant/networks/:id', deleteMarketNetwork);
+app.delete('/api/merchant/networks/:id', deleteMarketNetwork); // НОВОЕ
 
 // Market CRUD
 app.post('/api/merchant/markets', createMarket);
 app.post('/api/merchant/markets/:networkId/list', getMarkets);
 app.put('/api/merchant/markets/:id', updateMarket);
-app.delete('/api/merchant/markets/:id', deleteMarket);
+app.delete('/api/merchant/markets/:id', deleteMarket); // НОВОЕ
 
 // Table CRUD
 app.post('/api/merchant/tables', createTable);
 app.post('/api/merchant/tables/:marketId/list', getTables);
-app.delete('/api/merchant/tables/:id', deleteTable);
+app.delete('/api/merchant/tables/:id', deleteTable); // НОВОЕ
 
 // Menu CRUD
 app.post('/api/merchant/menus', createMenu);
 app.post('/api/merchant/menus/:networkId/list', getMenus);
-app.delete('/api/merchant/menus/:id', deleteMenu);
+app.delete('/api/merchant/menus/:id', deleteMenu); // НОВОЕ
 
 // ADMIN ENDPOINTS
 app.get('/api/admin/security/stats', getSecurityStats);
@@ -178,7 +180,7 @@ const port = config.port;
 
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
-        console.log('🚀 CryptoNow Server with Tables Support Started');
+        console.log('🚀 CryptoNow Server with Delete Support Started');
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
         console.log('⚖️ BALANCED SECURITY FEATURES:');
@@ -195,7 +197,8 @@ initDatabase().then(() => {
         console.log('  ✅ Secure Menu CRUD');
         console.log('  ✅ Auto table numbering');
         console.log('  ✅ Wallet ownership validation');
-        console.log('💡 Perfect balance: Security + Usability');
+        console.log('  🗑️ Delete functionality for all entities'); // НОВОЕ
+        console.log('💡 Perfect balance: Security + Usability + Delete Support');
 
         startCleanup();
     });

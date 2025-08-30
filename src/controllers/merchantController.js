@@ -1,4 +1,5 @@
-// src/controllers/merchantController.js
+// src/controllers/merchantController.js - РЕАЛЬНОЕ УДАЛЕНИЕ ИЗ БД
+import { Op } from 'sequelize';
 import User from '../models/User.js';
 import MarketNetwork from '../models/MarketNetwork.js';
 import Market from '../models/Market.js';
@@ -14,7 +15,6 @@ async function getAuthenticatedUser(req) {
         return null;
     }
 
-    // Валидируем сессию через authService
     const validation = await authService.validateSession(
         walletAddress,
         sessionKey,
@@ -26,12 +26,10 @@ async function getAuthenticatedUser(req) {
         return null;
     }
 
-    // Находим пользователя
     const user = await User.findOne({
         where: {
             sol_wallet: walletAddress,
-            session_key: sessionKey,
-            is_active: true
+            session_key: sessionKey
         }
     });
 
@@ -98,21 +96,18 @@ export async function getMarketNetworks(req, res) {
 
         const networks = await MarketNetwork.findAll({
             where: {
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             },
             include: [
                 {
                     model: Market,
                     as: 'markets',
-                    where: { is_active: true },
                     required: false,
                     attributes: ['id', 'name', 'created_at']
                 },
                 {
                     model: Menu,
                     as: 'menus',
-                    where: { is_active: true },
                     required: false,
                     attributes: ['id', 'name', 'created_at']
                 }
@@ -166,8 +161,7 @@ export async function updateMarketNetwork(req, res) {
         const network = await MarketNetwork.findOne({
             where: {
                 id: parseInt(id),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -204,6 +198,7 @@ export async function updateMarketNetwork(req, res) {
     }
 }
 
+// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteMarketNetwork(req, res) {
     try {
         const { id } = req.params;
@@ -219,8 +214,7 @@ export async function deleteMarketNetwork(req, res) {
         const network = await MarketNetwork.findOne({
             where: {
                 id: parseInt(id),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -231,14 +225,13 @@ export async function deleteMarketNetwork(req, res) {
             });
         }
 
-        // Мягкое удаление - деактивируем сеть и все её маркеты
-        await network.update({ is_active: false });
-        await Market.update(
-            { is_active: false },
-            { where: { market_network_id: network.id } }
-        );
+        // Каскадное удаление: сначала столы, потом маркеты и меню, потом сеть
+        await Table.destroy({ where: { market_id: { [Op.in]: await Market.findAll({ where: { market_network_id: network.id }, attributes: ['id'] }).then(m => m.map(x => x.id)) } } });
+        await Market.destroy({ where: { market_network_id: network.id } });
+        await Menu.destroy({ where: { market_network_id: network.id } });
+        await network.destroy();
 
-        console.log('🗑️ MarketNetwork deleted:', network.id);
+        console.log('🗑️ MarketNetwork DELETED from DB:', network.id, 'name:', network.name);
 
         res.json({
             success: true,
@@ -275,12 +268,10 @@ export async function createMarket(req, res) {
             });
         }
 
-        // Проверяем, что MarketNetwork принадлежит пользователю
         const network = await MarketNetwork.findOne({
             where: {
                 id: parseInt(marketNetworkId),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -330,12 +321,10 @@ export async function getMarkets(req, res) {
             });
         }
 
-        // Проверяем доступ к сети
         const network = await MarketNetwork.findOne({
             where: {
                 id: parseInt(networkId),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -349,13 +338,11 @@ export async function getMarkets(req, res) {
         const markets = await Market.findAll({
             where: {
                 market_network_id: network.id,
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             },
             include: [{
                 model: Table,
                 as: 'tables',
-                where: { is_active: true },
                 required: false,
                 attributes: ['id', 'number', 'created_at']
             }],
@@ -404,8 +391,7 @@ export async function updateMarket(req, res) {
         const market = await Market.findOne({
             where: {
                 id: parseInt(id),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -440,6 +426,7 @@ export async function updateMarket(req, res) {
     }
 }
 
+// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteMarket(req, res) {
     try {
         const { id } = req.params;
@@ -455,8 +442,7 @@ export async function deleteMarket(req, res) {
         const market = await Market.findOne({
             where: {
                 id: parseInt(id),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -467,9 +453,11 @@ export async function deleteMarket(req, res) {
             });
         }
 
-        await market.update({ is_active: false });
+        // Сначала удаляем столы, потом маркет
+        await Table.destroy({ where: { market_id: market.id } });
+        await market.destroy();
 
-        console.log('🗑️ Market deleted:', market.id);
+        console.log('🗑️ Market DELETED from DB:', market.id, 'name:', market.name);
 
         res.json({
             success: true,
@@ -506,12 +494,10 @@ export async function createTable(req, res) {
             });
         }
 
-        // Проверяем, что Market принадлежит пользователю
         const market = await Market.findOne({
             where: {
                 id: parseInt(marketId),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -522,12 +508,10 @@ export async function createTable(req, res) {
             });
         }
 
-        // Находим максимальный номер стола в этом маркете
         const maxTable = await Table.findOne({
             where: {
                 market_id: market.id,
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             },
             order: [['number', 'DESC']]
         });
@@ -573,12 +557,10 @@ export async function getTables(req, res) {
             });
         }
 
-        // Проверяем доступ к маркету
         const market = await Market.findOne({
             where: {
                 id: parseInt(marketId),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -592,8 +574,7 @@ export async function getTables(req, res) {
         const tables = await Table.findAll({
             where: {
                 market_id: market.id,
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             },
             order: [['number', 'ASC']]
         });
@@ -616,6 +597,7 @@ export async function getTables(req, res) {
     }
 }
 
+// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteTable(req, res) {
     try {
         const { id } = req.params;
@@ -631,8 +613,7 @@ export async function deleteTable(req, res) {
         const table = await Table.findOne({
             where: {
                 id: parseInt(id),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -643,9 +624,9 @@ export async function deleteTable(req, res) {
             });
         }
 
-        await table.update({ is_active: false });
+        await table.destroy();
 
-        console.log('🗑️ Table deleted:', table.id);
+        console.log('🗑️ Table DELETED from DB:', table.id, 'number:', table.number);
 
         res.json({
             success: true,
@@ -682,12 +663,10 @@ export async function createMenu(req, res) {
             });
         }
 
-        // Проверяем, что MarketNetwork принадлежит пользователю
         const network = await MarketNetwork.findOne({
             where: {
                 id: parseInt(marketNetworkId),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -737,12 +716,10 @@ export async function getMenus(req, res) {
             });
         }
 
-        // Проверяем доступ к сети
         const network = await MarketNetwork.findOne({
             where: {
                 id: parseInt(networkId),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -756,8 +733,7 @@ export async function getMenus(req, res) {
         const menus = await Menu.findAll({
             where: {
                 market_network_id: network.id,
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             },
             order: [['created_at', 'DESC']]
         });
@@ -780,6 +756,7 @@ export async function getMenus(req, res) {
     }
 }
 
+// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteMenu(req, res) {
     try {
         const { id } = req.params;
@@ -795,8 +772,7 @@ export async function deleteMenu(req, res) {
         const menu = await Menu.findOne({
             where: {
                 id: parseInt(id),
-                user_id: user.id,
-                is_active: true
+                user_id: user.id
             }
         });
 
@@ -807,9 +783,9 @@ export async function deleteMenu(req, res) {
             });
         }
 
-        await menu.update({ is_active: false });
+        await menu.destroy();
 
-        console.log('🗑️ Menu deleted:', menu.id);
+        console.log('🗑️ Menu DELETED from DB:', menu.id, 'name:', menu.name);
 
         res.json({
             success: true,
