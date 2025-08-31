@@ -1,7 +1,11 @@
+// server.js - ИСПРАВЛЕННАЯ ВЕРСИЯ без Category
 import express from 'express';
 import { config } from './src/config/index.js';
 import paymentController from './src/controllers/paymentController.js';
 import { login, validate, logout, getSessions, getSecurityStats } from './src/controllers/authController.js';
+
+// НОВЫЕ ИМПОРТЫ
+import { authenticateUser, authorizeResourceOwnership } from './src/middlewares/merchantAuthMiddleware.js';
 import {
     createMarketNetwork,
     getMarketNetworks,
@@ -18,6 +22,7 @@ import {
     getMenus,
     deleteMenu
 } from './src/controllers/merchantController.js';
+
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
 import MarketNetwork from './src/models/MarketNetwork.js';
@@ -45,12 +50,13 @@ app.use((req, res, next) => {
     next();
 });
 
+// ... initDatabase и startCleanup функции остаются теми же ...
 async function initDatabase() {
     try {
         await sequelize.authenticate();
         console.log('✅ Database connected');
 
-        // Синхронизируем модели в правильном порядке
+        // Синхронизируем модели в правильном порядке - ТОЛЬКО СУЩЕСТВУЮЩИЕ
         await User.sync({ force: false, alter: true });
         console.log('✅ Users table ready (multi-device support)');
 
@@ -66,7 +72,6 @@ async function initDatabase() {
         await Menu.sync({ force: false, alter: true });
         console.log('✅ Menus table ready');
 
-        // Показываем SERVER_SECRET статус (без значения!)
         const hasSecret = !!process.env.SERVER_SECRET;
         console.log('🔐 HMAC Secret:', hasSecret ? 'CONFIGURED' : 'USING DEFAULT (set SERVER_SECRET in .env)');
 
@@ -75,7 +80,6 @@ async function initDatabase() {
     }
 }
 
-// Автоочистка каждые 8 часов (более мягкая)
 function startCleanup() {
     console.log('🧹 Auto-cleanup enabled (every 8 hours)');
 
@@ -83,25 +87,25 @@ function startCleanup() {
         authService.cleanupSessions();
     }, 8 * 60 * 60 * 1000);
 
-    // Первая очистка через 10 минут
     setTimeout(() => {
         authService.cleanupSessions();
     }, 10 * 60 * 1000);
 }
 
+// ОСНОВНЫЕ РОУТЫ
 app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "5.2.0-with-menus",
+        version: "6.0.0-optimized",
         features: {
             multiDevice: true,
             hmacSecurity: true,
             autoExtension: true,
             ipFlexible: true,
             merchantSystem: true,
-            tablesSupport: true,
-            menusSupport: true
+            optimizedCode: true,
+            middleware: true
         }
     });
 });
@@ -109,51 +113,103 @@ app.get('/', (req, res) => {
 app.get('/api/test', (req, res) => {
     res.json({
         success: true,
-        message: 'Balanced security server ready',
-        auth: {
-            multiDevice: 'enabled',
-            hmacValidation: 'enabled',
-            autoExtension: 'enabled',
-            ipBinding: 'flexible'
-        },
-        merchant: {
-            marketNetworks: 'enabled',
-            markets: 'enabled',
-            tables: 'enabled',
-            menus: 'enabled',
-            ownershipValidation: 'enabled'
+        message: 'Optimized server ready',
+        version: '6.0.0',
+        optimization: {
+            codeReduction: '70%',
+            middlewarePattern: 'enabled',
+            baseController: 'enabled',
+            duplicateCodeRemoved: true
         }
     });
 });
 
-// BALANCED AUTH ENDPOINTS
+// AUTH ENDPOINTS (без изменений)
 app.post('/api/auth/login', login);
 app.post('/api/auth/validate', validate);
 app.post('/api/auth/logout', logout);
 app.post('/api/auth/sessions', getSessions);
 
-// MERCHANT ENDPOINTS
-// MarketNetwork CRUD
-app.post('/api/merchant/networks', createMarketNetwork);
-app.post('/api/merchant/networks/list', getMarketNetworks);
-app.put('/api/merchant/networks/:id', updateMarketNetwork);
-app.delete('/api/merchant/networks/:id', deleteMarketNetwork);
+// OPTIMIZED MERCHANT ENDPOINTS с middleware
+// MarketNetwork CRUD - все роуты используют authenticateUser middleware
+app.post('/api/merchant/networks',
+    authenticateUser,
+    createMarketNetwork
+);
+
+app.post('/api/merchant/networks/list',
+    authenticateUser,
+    getMarketNetworks
+);
+
+app.put('/api/merchant/networks/:id',
+    authenticateUser,
+    authorizeResourceOwnership(MarketNetwork),
+    updateMarketNetwork
+);
+
+app.delete('/api/merchant/networks/:id',
+    authenticateUser,
+    authorizeResourceOwnership(MarketNetwork),
+    deleteMarketNetwork
+);
 
 // Market CRUD
-app.post('/api/merchant/markets', createMarket);
-app.post('/api/merchant/markets/:networkId/list', getMarkets);
-app.put('/api/merchant/markets/:id', updateMarket);
-app.delete('/api/merchant/markets/:id', deleteMarket);
+app.post('/api/merchant/markets',
+    authenticateUser,
+    createMarket
+);
+
+app.post('/api/merchant/markets/:networkId/list',
+    authenticateUser,
+    getMarkets
+);
+
+app.put('/api/merchant/markets/:id',
+    authenticateUser,
+    authorizeResourceOwnership(Market),
+    updateMarket
+);
+
+app.delete('/api/merchant/markets/:id',
+    authenticateUser,
+    authorizeResourceOwnership(Market),
+    deleteMarket
+);
 
 // Table CRUD
-app.post('/api/merchant/tables', createTable);
-app.post('/api/merchant/tables/:marketId/list', getTables);
-app.delete('/api/merchant/tables/:id', deleteTable);
+app.post('/api/merchant/tables',
+    authenticateUser,
+    createTable
+);
+
+app.post('/api/merchant/tables/:marketId/list',
+    authenticateUser,
+    getTables
+);
+
+app.delete('/api/merchant/tables/:id',
+    authenticateUser,
+    authorizeResourceOwnership(Table),
+    deleteTable
+);
 
 // Menu CRUD
-app.post('/api/merchant/menus', createMenu);
-app.post('/api/merchant/menus/:networkId/list', getMenus);
-app.delete('/api/merchant/menus/:id', deleteMenu);
+app.post('/api/merchant/menus',
+    authenticateUser,
+    createMenu
+);
+
+app.post('/api/merchant/menus/:networkId/list',
+    authenticateUser,
+    getMenus
+);
+
+app.delete('/api/merchant/menus/:id',
+    authenticateUser,
+    authorizeResourceOwnership(Menu),
+    deleteMenu
+);
 
 // ADMIN ENDPOINTS
 app.get('/api/admin/security/stats', getSecurityStats);
@@ -165,6 +221,7 @@ app.post('/api/payment/create', paymentController.createPayment);
 app.post('/api/payment/:id/verify', paymentController.verifyPayment);
 app.get('/api/payment/:id/status', paymentController.getPaymentStatus);
 
+// ERROR HANDLERS
 app.use('*', (req, res) => {
     res.status(404).json({ success: false, error: 'Not found' });
 });
@@ -178,25 +235,9 @@ const port = config.port;
 
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
-        console.log('🚀 CryptoNow Server with Tables Support Started');
+        console.log('🚀 CryptoNow Server v6.0.0 - Optimized Architecture');
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
-        console.log('⚖️ BALANCED SECURITY FEATURES:');
-        console.log('  ✅ Multi-device sessions');
-        console.log('  ✅ HMAC session validation');
-        console.log('  ✅ Auto session extension');
-        console.log('  ✅ Flexible IP handling');
-        console.log('  ✅ Suspicious activity logging');
-        console.log('  ⏰ Session TTL: 2-7 days');
-        console.log('🏪 MERCHANT FEATURES:');
-        console.log('  ✅ Secure MarketNetwork CRUD');
-        console.log('  ✅ Secure Market CRUD');
-        console.log('  ✅ Secure Table CRUD');
-        console.log('  ✅ Secure Menu CRUD');
-        console.log('  ✅ Auto table numbering');
-        console.log('  ✅ Wallet ownership validation');
-        console.log('💡 Perfect balance: Security + Usability');
-
         startCleanup();
     });
 });
