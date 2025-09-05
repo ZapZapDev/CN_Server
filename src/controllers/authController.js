@@ -1,4 +1,6 @@
+// src/controllers/authController.js - UPDATED WITH API KEY CREATION
 import authService from '../services/authService.js';
+import apiService from '../services/apiService.js'; // NEW IMPORT
 
 async function getClientIp(req) {
     const headers = [
@@ -36,12 +38,32 @@ export const login = async (req, res) => {
         const result = await authService.login(walletAddress, clientIp, userAgent, extendedSession);
 
         if (result.success) {
+            // NEW: Create or ensure API key exists for the user
+            try {
+                const user = await authService.getUserByWallet(walletAddress);
+                if (user) {
+                    const apiKey = await apiService.ensureUserApiKey(user.id, 'Auto-generated API Key');
+
+                    // Include API key in response
+                    result.apiKey = {
+                        key: apiKey.api_key,
+                        name: apiKey.name,
+                        rateLimit: apiKey.rate_limit,
+                        createdAt: apiKey.created_at
+                    };
+                }
+            } catch (apiError) {
+                console.error('❌ API key creation failed during login:', apiError);
+                // Don't fail login if API key creation fails
+            }
+
             res.json({
                 ...result,
                 features: {
                     multiDevice: true,
                     autoExtension: true,
-                    hmacSecurity: true
+                    hmacSecurity: true,
+                    apiAccess: true // NEW FEATURE FLAG
                 }
             });
         } else {
@@ -78,7 +100,8 @@ export const validate = async (req, res) => {
                 ...result,
                 security: {
                     hmacVerified: true,
-                    deviceBound: true
+                    deviceBound: true,
+                    apiEnabled: true // NEW SECURITY FLAG
                 }
             });
         } else {
@@ -105,7 +128,7 @@ export const logout = async (req, res) => {
             });
         }
 
-        // Если allDevices=true, то deviceHash игнорируется и логаут со всех устройств
+        // If allDevices=true, then deviceHash is ignored and logout from all devices
         const result = await authService.logout(walletAddress, allDevices ? null : deviceHash);
 
         res.json({
@@ -122,7 +145,115 @@ export const logout = async (req, res) => {
     }
 };
 
-// Новый эндпоинт: получить все активные сессии
+// NEW: API Key Management Endpoints
+export const getApiKeys = async (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+
+        if (!walletAddress) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing wallet address'
+            });
+        }
+
+        const user = await authService.getUserByWallet(walletAddress);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        const apiKeys = await apiService.getUserApiKeys(user.id);
+
+        res.json({
+            success: true,
+            data: apiKeys,
+            count: apiKeys.length
+        });
+
+    } catch (error) {
+        console.error('❌ Get API keys error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+};
+
+export const createApiKey = async (req, res) => {
+    try {
+        const { walletAddress, name, rateLimit } = req.body;
+
+        if (!walletAddress || !name) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields'
+            });
+        }
+
+        const user = await authService.getUserByWallet(walletAddress);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        const apiKey = await apiService.createApiKey(user.id, name, rateLimit);
+
+        res.json({
+            success: true,
+            data: apiKey,
+            message: 'API key created successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Create API key error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+};
+
+export const deleteApiKey = async (req, res) => {
+    try {
+        const { walletAddress, apiKeyId } = req.body;
+
+        if (!walletAddress || !apiKeyId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields'
+            });
+        }
+
+        const user = await authService.getUserByWallet(walletAddress);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        await apiService.deleteApiKey(user.id, apiKeyId);
+
+        res.json({
+            success: true,
+            message: 'API key deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Delete API key error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Server error'
+        });
+    }
+};
+
+// Existing endpoints remain unchanged
 export const getSessions = async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -151,13 +282,18 @@ export const getSessions = async (req, res) => {
     }
 };
 
-// Админ эндпоинт: статистика безопасности
+// Admin endpoint: security statistics
 export const getSecurityStats = async (req, res) => {
     try {
         const stats = await authService.getSecurityStats();
+        const apiStats = await apiService.getApiStats();
+
         res.json({
             success: true,
-            stats
+            stats: {
+                ...stats,
+                api: apiStats
+            }
         });
     } catch (error) {
         console.error('❌ Security stats error:', error);

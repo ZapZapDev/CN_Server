@@ -1,3 +1,4 @@
+// src/services/authService.js - UPDATED WITH USER HELPER METHOD
 import crypto from 'crypto';
 import User from '../models/User.js';
 import { Op } from 'sequelize';
@@ -31,6 +32,19 @@ class AuthService {
         return new Date(now.getTime() + (days * 24 * 60 * 60 * 1000));
     }
 
+    // NEW: Helper method to get user by wallet address
+    async getUserByWallet(walletAddress) {
+        try {
+            const user = await User.findOne({
+                where: { sol_wallet: walletAddress }
+            });
+            return user;
+        } catch (error) {
+            console.error('❌ Get user by wallet error:', error);
+            return null;
+        }
+    }
+
     async login(walletAddress, clientIp, userAgent = null, extendedSession = false) {
         console.log('🔐 Login:', walletAddress.slice(0, 8) + '...', 'IP:', clientIp);
 
@@ -40,7 +54,7 @@ class AuthService {
         const expiresAt = this.getExpirationTime(extendedSession);
 
         try {
-            // ВСЕГДА СНАЧАЛА ПРОБУЕМ НАЙТИ И ОБНОВИТЬ
+            // ALWAYS TRY TO FIND AND UPDATE FIRST
             const [user, created] = await User.findOrCreate({
                 where: {
                     sol_wallet: walletAddress,
@@ -60,7 +74,7 @@ class AuthService {
             });
 
             if (!created) {
-                // Запись уже была - обновляем её
+                // Record already existed - update it
                 console.log('✅ Found existing user, updating session');
 
                 await user.update({
@@ -86,7 +100,7 @@ class AuthService {
         } catch (error) {
             console.error('❌ Login error:', error.message);
 
-            // FALLBACK: если findOrCreate не сработал, попробуем просто найти и обновить
+            // FALLBACK: if findOrCreate didn't work, try to find and update existing user
             try {
                 console.log('🔄 Fallback: trying to find and update existing user');
 
@@ -146,7 +160,7 @@ class AuthService {
                 return { success: false };
             }
 
-            // Проверяем HMAC
+            // Check HMAC
             const expectedHash = this.createSecureHash(sessionKey, walletAddress);
             if (user.session_hash !== expectedHash) {
                 console.log('❌ HMAC verification failed');
@@ -154,7 +168,7 @@ class AuthService {
                 return { success: false };
             }
 
-            // Обновляем активность и IP
+            // Update activity and IP
             const updateData = { last_activity: new Date() };
 
             if (user.last_ip !== clientIp) {
@@ -162,7 +176,7 @@ class AuthService {
                 updateData.last_ip = clientIp;
             }
 
-            // Авто-продление если осталось меньше дня
+            // Auto-extension if less than a day remains
             const now = new Date();
             const timeLeft = user.expires_at.getTime() - now.getTime();
             const dayInMs = 24 * 60 * 60 * 1000;
@@ -198,6 +212,31 @@ class AuthService {
         }
     }
 
+    async getActiveSessions(walletAddress) {
+        try {
+            const sessions = await User.findAll({
+                where: {
+                    sol_wallet: walletAddress,
+                    is_active: true,
+                    expires_at: { [Op.gt]: new Date() }
+                },
+                attributes: ['device_hash', 'last_ip', 'last_activity', 'expires_at', 'created_at'],
+                order: [['last_activity', 'DESC']]
+            });
+
+            return sessions.map(session => ({
+                deviceHash: session.device_hash,
+                lastIp: session.last_ip,
+                lastActivity: session.last_activity,
+                expiresAt: session.expires_at,
+                createdAt: session.created_at
+            }));
+        } catch (error) {
+            console.error('❌ Get active sessions error:', error);
+            return [];
+        }
+    }
+
     async cleanupSessions() {
         try {
             const now = new Date();
@@ -218,6 +257,43 @@ class AuthService {
         } catch (error) {
             console.error('❌ Cleanup error:', error);
             return { deactivated: 0 };
+        }
+    }
+
+    async getSecurityStats() {
+        try {
+            const totalUsers = await User.count({
+                distinct: true,
+                col: 'sol_wallet'
+            });
+
+            const activeSessions = await User.count({
+                where: {
+                    is_active: true,
+                    expires_at: { [Op.gt]: new Date() }
+                }
+            });
+
+            const todayLogins = await User.count({
+                where: {
+                    last_activity: {
+                        [Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000)
+                    }
+                }
+            });
+
+            return {
+                totalUsers,
+                activeSessions,
+                todayLogins
+            };
+        } catch (error) {
+            console.error('❌ Security stats error:', error);
+            return {
+                totalUsers: 0,
+                activeSessions: 0,
+                todayLogins: 0
+            };
         }
     }
 }

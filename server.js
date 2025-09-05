@@ -1,22 +1,26 @@
+// server.js - UPDATED WITH API INTEGRATION
 import express from 'express';
 import { config } from './src/config/index.js';
 import paymentController from './src/controllers/paymentController.js';
-import { login, validate, logout, getSessions, getSecurityStats } from './src/controllers/authController.js';
+import {
+    login, validate, logout, getSessions, getSecurityStats,
+    getApiKeys, createApiKey, deleteApiKey  // NEW IMPORTS
+} from './src/controllers/authController.js';
 import {
     createMarketNetwork,
     getMarketNetworks,
     updateMarketNetwork,
-    deleteMarketNetwork, // НОВОЕ
+    deleteMarketNetwork,
     createMarket,
     getMarkets,
     updateMarket,
-    deleteMarket, // НОВОЕ
+    deleteMarket,
     createTable,
     getTables,
-    deleteTable, // НОВОЕ
+    deleteTable,
     createMenu,
     getMenus,
-    deleteMenu // НОВОЕ
+    deleteMenu
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
@@ -24,7 +28,12 @@ import MarketNetwork from './src/models/MarketNetwork.js';
 import Market from './src/models/Market.js';
 import Table from './src/models/Table.js';
 import Menu from './src/models/Menu.js';
+import API from './src/models/API.js';  // NEW IMPORT
 import authService from './src/services/authService.js';
+import apiService from './src/services/apiService.js';  // NEW IMPORT
+
+// API Routes Import
+import apiV1Routes from './src/api/routes/v1.js';  // NEW IMPORT
 
 const app = express();
 
@@ -33,7 +42,7 @@ app.set('trust proxy', true);
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');  // UPDATED
     if (req.method === 'OPTIONS') return res.status(200).end();
     next();
 });
@@ -50,9 +59,12 @@ async function initDatabase() {
         await sequelize.authenticate();
         console.log('✅ Database connected');
 
-        // Синхронизируем модели в правильном порядке
+        // Sync models in correct order
         await User.sync({ force: false, alter: true });
         console.log('✅ Users table ready (multi-device support)');
+
+        await API.sync({ force: false, alter: true });  // NEW
+        console.log('✅ API Keys table ready');
 
         await MarketNetwork.sync({ force: false, alter: true });
         console.log('✅ MarketNetworks table ready');
@@ -66,7 +78,7 @@ async function initDatabase() {
         await Menu.sync({ force: false, alter: true });
         console.log('✅ Menus table ready');
 
-        // Показываем SERVER_SECRET статус
+        // Show SERVER_SECRET status
         const hasSecret = !!process.env.SERVER_SECRET;
         console.log('🔐 HMAC Secret:', hasSecret ? 'CONFIGURED' : 'USING DEFAULT (set SERVER_SECRET in .env)');
 
@@ -75,17 +87,19 @@ async function initDatabase() {
     }
 }
 
-// Автоочистка каждые 8 часов
+// Auto-cleanup every 8 hours
 function startCleanup() {
     console.log('🧹 Auto-cleanup enabled (every 8 hours)');
 
-    setInterval(() => {
-        authService.cleanupSessions();
+    setInterval(async () => {
+        await authService.cleanupSessions();
+        await apiService.cleanupExpiredKeys();  // NEW
     }, 8 * 60 * 60 * 1000);
 
-    // Первая очистка через 10 минут
-    setTimeout(() => {
-        authService.cleanupSessions();
+    // First cleanup after 10 minutes
+    setTimeout(async () => {
+        await authService.cleanupSessions();
+        await apiService.cleanupExpiredKeys();  // NEW
     }, 10 * 60 * 1000);
 }
 
@@ -93,7 +107,7 @@ app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "5.3.0-with-delete", // ОБНОВИЛИ ВЕРСИЮ
+        version: "6.0.0-with-api",  // UPDATED VERSION
         features: {
             multiDevice: true,
             hmacSecurity: true,
@@ -102,7 +116,9 @@ app.get('/', (req, res) => {
             merchantSystem: true,
             tablesSupport: true,
             menusSupport: true,
-            deleteSupport: true // НОВОЕ
+            deleteSupport: true,
+            apiAccess: true,  // NEW
+            apiKeyManagement: true  // NEW
         }
     });
 });
@@ -110,7 +126,7 @@ app.get('/', (req, res) => {
 app.get('/api/test', (req, res) => {
     res.json({
         success: true,
-        message: 'Merchant server with delete functionality ready',
+        message: 'CryptoNow Server with API Access ready',
         auth: {
             multiDevice: 'enabled',
             hmacValidation: 'enabled',
@@ -123,54 +139,70 @@ app.get('/api/test', (req, res) => {
             tables: 'enabled',
             menus: 'enabled',
             ownershipValidation: 'enabled',
-            deleteSupport: 'enabled' // НОВОЕ
+            deleteSupport: 'enabled'
+        },
+        api: {  // NEW
+            version: 'v1',
+            authentication: 'api-key',
+            rateLimit: 'per-key',
+            endpoints: ['/api/v1/market-networks']
         }
     });
 });
 
-// AUTH ENDPOINTS
+// ============ AUTHENTICATION ENDPOINTS ============
 app.post('/api/auth/login', login);
 app.post('/api/auth/validate', validate);
 app.post('/api/auth/logout', logout);
 app.post('/api/auth/sessions', getSessions);
 
-// MERCHANT ENDPOINTS
+// ============ API KEY MANAGEMENT ENDPOINTS ============  // NEW SECTION
+app.post('/api/auth/api-keys', getApiKeys);
+app.post('/api/auth/api-keys/create', createApiKey);
+app.post('/api/auth/api-keys/delete', deleteApiKey);
+
+// ============ MERCHANT ENDPOINTS ============
 // MarketNetwork CRUD
 app.post('/api/merchant/networks', createMarketNetwork);
 app.post('/api/merchant/networks/list', getMarketNetworks);
 app.put('/api/merchant/networks/:id', updateMarketNetwork);
-app.delete('/api/merchant/networks/:id', deleteMarketNetwork); // НОВОЕ
+app.delete('/api/merchant/networks/:id', deleteMarketNetwork);
 
 // Market CRUD
 app.post('/api/merchant/markets', createMarket);
 app.post('/api/merchant/markets/:networkId/list', getMarkets);
 app.put('/api/merchant/markets/:id', updateMarket);
-app.delete('/api/merchant/markets/:id', deleteMarket); // НОВОЕ
+app.delete('/api/merchant/markets/:id', deleteMarket);
 
 // Table CRUD
 app.post('/api/merchant/tables', createTable);
 app.post('/api/merchant/tables/:marketId/list', getTables);
-app.delete('/api/merchant/tables/:id', deleteTable); // НОВОЕ
+app.delete('/api/merchant/tables/:id', deleteTable);
 
 // Menu CRUD
 app.post('/api/merchant/menus', createMenu);
 app.post('/api/merchant/menus/:networkId/list', getMenus);
-app.delete('/api/merchant/menus/:id', deleteMenu); // НОВОЕ
+app.delete('/api/merchant/menus/:id', deleteMenu);
 
-// ADMIN ENDPOINTS
-app.get('/api/admin/security/stats', getSecurityStats);
+// ============ EXTERNAL API ENDPOINTS ============  // NEW SECTION
+app.use('/api/v1', apiV1Routes);
 
-// PAYMENTS (без изменений)
+// ============ PAYMENT ENDPOINTS ============
 app.get('/api/payment/:id/transaction', paymentController.getTransaction);
 app.post('/api/payment/:id/transaction', paymentController.createTransaction);
 app.post('/api/payment/create', paymentController.createPayment);
 app.post('/api/payment/:id/verify', paymentController.verifyPayment);
 app.get('/api/payment/:id/status', paymentController.getPaymentStatus);
 
+// ============ ADMIN ENDPOINTS ============
+app.get('/api/admin/security/stats', getSecurityStats);
+
+// 404 Handler
 app.use('*', (req, res) => {
     res.status(404).json({ success: false, error: 'Not found' });
 });
 
+// Error Handler
 app.use((error, req, res, next) => {
     console.error('❌ Server error:', error.message);
     res.status(500).json({ success: false, error: 'Server error' });
@@ -180,9 +212,14 @@ const port = config.port;
 
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
-        console.log('🚀 CryptoNow Server with Delete Support Started');
+        console.log('🚀 CryptoNow Server with API Access Started');
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
+        console.log('🔑 API Endpoints:');
+        console.log(`   GET ${config.baseUrl}/api/v1/health`);
+        console.log(`   GET ${config.baseUrl}/api/v1/market-networks`);
+        console.log(`   GET ${config.baseUrl}/api/v1/market-networks/:id`);
+        console.log('📚 API Documentation: Use Postman with X-API-Key header');
         startCleanup();
     });
 });
