@@ -17,8 +17,6 @@ export const config = {
         feeWallet: process.env.CRYPTONOW_FEE_WALLET || '9E9ME8Xjrnnz5tyLqPWUbXVbPjXusEp9NdjKeugDjW5t',
         feeAmount: parseFloat(process.env.CRYPTONOW_FEE_AMOUNT) || 0.1,
         name: 'CryptoNow',
-        icon: 'https://zapzap666.xyz/icon.png',
-        website: 'https://zapzap666.xyz'
     },
 
     // Поддерживаемые токены
