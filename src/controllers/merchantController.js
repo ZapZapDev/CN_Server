@@ -1,4 +1,3 @@
-// src/controllers/merchantController.js - РЕАЛЬНОЕ УДАЛЕНИЕ ИЗ БД
 import { Op } from 'sequelize';
 import User from '../models/User.js';
 import MarketNetwork from '../models/MarketNetwork.js';

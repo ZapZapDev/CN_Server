@@ -183,23 +183,6 @@ initDatabase().then(() => {
         console.log('🚀 CryptoNow Server with Delete Support Started');
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
-        console.log('⚖️ BALANCED SECURITY FEATURES:');
-        console.log('  ✅ Multi-device sessions');
-        console.log('  ✅ HMAC session validation');
-        console.log('  ✅ Auto session extension');
-        console.log('  ✅ Flexible IP handling');
-        console.log('  ✅ Suspicious activity logging');
-        console.log('  ⏰ Session TTL: 2-7 days');
-        console.log('🏪 MERCHANT FEATURES:');
-        console.log('  ✅ Secure MarketNetwork CRUD');
-        console.log('  ✅ Secure Market CRUD');
-        console.log('  ✅ Secure Table CRUD');
-        console.log('  ✅ Secure Menu CRUD');
-        console.log('  ✅ Auto table numbering');
-        console.log('  ✅ Wallet ownership validation');
-        console.log('  🗑️ Delete functionality for all entities'); // НОВОЕ
-        console.log('💡 Perfect balance: Security + Usability + Delete Support');
-
         startCleanup();
     });
 });
