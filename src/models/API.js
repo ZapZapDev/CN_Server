@@ -1,8 +1,17 @@
-// src/models/API.js
+// src/models/API.js - ИСПРАВЛЕННАЯ ВЕРСИЯ
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 import User from './User.js';
 import crypto from 'crypto';
+
+// ИСПРАВЛЕНИЕ: Функция генерации ключа ПЕРЕД определением модели
+function generateSecureApiKey() {
+    const timestamp = Date.now().toString(36);
+    const random = crypto.randomBytes(32).toString('hex');
+    const key = `cn_${timestamp}_${random}`.substring(0, 64);
+    console.log('🔑 Generated API key:', key.substring(0, 12) + '...');
+    return key;
+}
 
 const API = sequelize.define('API', {
     id: {
@@ -15,7 +24,7 @@ const API = sequelize.define('API', {
         allowNull: false,
         unique: true,
         validate: {
-            len: [64, 64]
+            len: [32, 64] // Более гибкая валидация длины
         }
     },
     user_id: {
@@ -79,20 +88,30 @@ const API = sequelize.define('API', {
         }
     ],
     hooks: {
-        beforeCreate: (apiKey) => {
+        // ИСПРАВЛЕНИЕ: Более надежный хук с детальным логированием
+        beforeCreate: (apiKey, options) => {
+            console.log('🔧 beforeCreate hook triggered for API key');
+
             if (!apiKey.api_key) {
+                console.log('📝 Generating new API key...');
                 apiKey.api_key = generateSecureApiKey();
+                console.log('✅ API key generated in hook:', apiKey.api_key.substring(0, 12) + '...');
+            } else {
+                console.log('📝 API key already exists:', apiKey.api_key.substring(0, 12) + '...');
+            }
+        },
+        // ДОПОЛНИТЕЛЬНАЯ БЕЗОПАСНОСТЬ: beforeValidate хук
+        beforeValidate: (apiKey, options) => {
+            console.log('🔧 beforeValidate hook triggered');
+
+            if (!apiKey.api_key) {
+                console.log('⚠️ API key missing in validation, generating...');
+                apiKey.api_key = generateSecureApiKey();
+                console.log('✅ API key generated in validation:', apiKey.api_key.substring(0, 12) + '...');
             }
         }
     }
 });
-
-// Static method to generate secure API key
-function generateSecureApiKey() {
-    const timestamp = Date.now().toString(36);
-    const random = crypto.randomBytes(32).toString('hex');
-    return `cn_${timestamp}_${random}`.substring(0, 64);
-}
 
 // Instance methods
 API.prototype.isValid = function() {

@@ -1,11 +1,23 @@
-// src/services/apiService.js - COMPLETE ENHANCED VERSION
+// src/services/apiService.js - ИСПРАВЛЕННАЯ ВЕРСИЯ
 import API from '../models/API.js';
 import User from '../models/User.js';
 import { Op } from 'sequelize';
+import crypto from 'crypto';
 
 class APIService {
     /**
-     * Create or get API key for user during login - ENHANCED VERSION
+     * ИСПРАВЛЕНО: Ручная генерация ключа если автоматическая не сработала
+     */
+    generateManualApiKey() {
+        const timestamp = Date.now().toString(36);
+        const random = crypto.randomBytes(32).toString('hex');
+        const key = `cn_${timestamp}_${random}`.substring(0, 64);
+        console.log('🔧 Manual API key generation:', key.substring(0, 12) + '...');
+        return key;
+    }
+
+    /**
+     * Create or get API key for user during login - ИСПРАВЛЕННАЯ ВЕРСИЯ
      */
     async ensureUserApiKey(userId, keyName = 'Default API Key') {
         try {
@@ -25,10 +37,40 @@ class APIService {
                 return apiKey;
             }
 
-            // If no active API key exists, create one
+            // ИСПРАВЛЕНО: Если нет активного ключа, создаем с принудительной генерацией
             console.log('🔑 Creating new API key for user:', userId);
 
+            // Вариант 1: Пробуем обычное создание
+            try {
+                apiKey = await API.create({
+                    user_id: userId,
+                    name: keyName,
+                    is_active: true,
+                    rate_limit: 1000,
+                    usage_count: 0
+                    // api_key будет сгенерирован хуком
+                });
+
+                if (apiKey && apiKey.api_key) {
+                    console.log('✅ API key created via hooks:', {
+                        id: apiKey.id,
+                        keyPreview: apiKey.api_key.substring(0, 12) + '...',
+                        name: apiKey.name,
+                        userId: userId
+                    });
+                    return apiKey;
+                }
+            } catch (hookError) {
+                console.error('❌ Hook-based creation failed:', hookError.message);
+            }
+
+            // Вариант 2: Ручная генерация ключа
+            console.log('🔧 Trying manual API key generation...');
+
+            const manualKey = this.generateManualApiKey();
+
             apiKey = await API.create({
+                api_key: manualKey, // Явно задаем ключ
                 user_id: userId,
                 name: keyName,
                 is_active: true,
@@ -36,29 +78,35 @@ class APIService {
                 usage_count: 0
             });
 
-            console.log('✅ API key created successfully:', {
-                id: apiKey.id,
-                keyPreview: apiKey.api_key.substring(0, 12) + '...',
-                name: apiKey.name,
-                userId: userId
-            });
+            if (apiKey && apiKey.api_key) {
+                console.log('✅ API key created manually:', {
+                    id: apiKey.id,
+                    keyPreview: apiKey.api_key.substring(0, 12) + '...',
+                    name: apiKey.name,
+                    userId: userId
+                });
+                return apiKey;
+            }
 
-            return apiKey;
+            throw new Error('Both automatic and manual API key generation failed');
 
         } catch (error) {
             console.error('❌ API key creation error:', error);
 
-            // Try to find any existing key as fallback
+            // Финальная попытка: найти любой существующий ключ
             try {
+                console.log('🔄 Final fallback: searching for any existing key...');
+
                 const existingKey = await API.findOne({
                     where: { user_id: userId },
                     order: [['created_at', 'DESC']]
                 });
 
-                if (existingKey && !existingKey.is_active) {
-                    // Reactivate existing key
-                    await existingKey.update({ is_active: true });
-                    console.log('✅ Reactivated existing API key');
+                if (existingKey) {
+                    if (!existingKey.is_active) {
+                        await existingKey.update({ is_active: true });
+                        console.log('✅ Reactivated existing API key');
+                    }
                     return existingKey;
                 }
             } catch (fallbackError) {
@@ -102,11 +150,17 @@ class APIService {
     }
 
     /**
-     * Create new API key for user
+     * Create new API key for user - ИСПРАВЛЕНО
      */
     async createApiKey(userId, name, rateLimit = 1000, expiresAt = null) {
         try {
+            console.log('🔑 Creating API key manually:', { userId, name, rateLimit });
+
+            // Генерируем ключ вручную
+            const apiKeyString = this.generateManualApiKey();
+
             const apiKey = await API.create({
+                api_key: apiKeyString, // Явно задаем ключ
                 user_id: userId,
                 name: name.trim(),
                 rate_limit: rateLimit,
@@ -114,7 +168,7 @@ class APIService {
                 is_active: true
             });
 
-            console.log('✅ New API key created:', apiKey.api_key.substring(0, 12) + '...', 'for user:', userId);
+            console.log('✅ New API key created manually:', apiKey.api_key.substring(0, 12) + '...', 'for user:', userId);
 
             return {
                 id: apiKey.id,
@@ -126,7 +180,7 @@ class APIService {
             };
         } catch (error) {
             console.error('❌ Create API key error:', error);
-            throw new Error('Failed to create API key');
+            throw new Error('Failed to create API key: ' + error.message);
         }
     }
 
