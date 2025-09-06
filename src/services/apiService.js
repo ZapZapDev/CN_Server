@@ -1,13 +1,16 @@
-// src/services/apiService.js
+// src/services/apiService.js - COMPLETE ENHANCED VERSION
 import API from '../models/API.js';
 import User from '../models/User.js';
+import { Op } from 'sequelize';
 
 class APIService {
     /**
-     * Create or get API key for user during login
+     * Create or get API key for user during login - ENHANCED VERSION
      */
     async ensureUserApiKey(userId, keyName = 'Default API Key') {
         try {
+            console.log('🔍 Checking for existing API key for user:', userId);
+
             // Check if user already has an active API key
             let apiKey = await API.findOne({
                 where: {
@@ -17,21 +20,52 @@ class APIService {
                 order: [['created_at', 'DESC']]
             });
 
-            // If no active API key exists, create one
-            if (!apiKey) {
-                apiKey = await API.create({
-                    user_id: userId,
-                    name: keyName,
-                    is_active: true
-                });
-
-                console.log('✅ API key created for user:', userId, 'Key:', apiKey.api_key.substring(0, 12) + '...');
+            if (apiKey) {
+                console.log('✅ Found existing API key:', apiKey.api_key.substring(0, 12) + '...');
+                return apiKey;
             }
 
+            // If no active API key exists, create one
+            console.log('🔑 Creating new API key for user:', userId);
+
+            apiKey = await API.create({
+                user_id: userId,
+                name: keyName,
+                is_active: true,
+                rate_limit: 1000,
+                usage_count: 0
+            });
+
+            console.log('✅ API key created successfully:', {
+                id: apiKey.id,
+                keyPreview: apiKey.api_key.substring(0, 12) + '...',
+                name: apiKey.name,
+                userId: userId
+            });
+
             return apiKey;
+
         } catch (error) {
             console.error('❌ API key creation error:', error);
-            throw new Error('Failed to create API key');
+
+            // Try to find any existing key as fallback
+            try {
+                const existingKey = await API.findOne({
+                    where: { user_id: userId },
+                    order: [['created_at', 'DESC']]
+                });
+
+                if (existingKey && !existingKey.is_active) {
+                    // Reactivate existing key
+                    await existingKey.update({ is_active: true });
+                    console.log('✅ Reactivated existing API key');
+                    return existingKey;
+                }
+            } catch (fallbackError) {
+                console.error('❌ Fallback also failed:', fallbackError);
+            }
+
+            throw new Error(`Failed to create API key: ${error.message}`);
         }
     }
 
@@ -223,26 +257,85 @@ class APIService {
         try {
             const whereClause = userId ? { user_id: userId } : {};
 
-            const stats = await API.findAll({
+            // Get basic counts
+            const totalKeys = await API.count({
+                where: whereClause
+            });
+
+            const activeKeys = await API.count({
+                where: {
+                    ...whereClause,
+                    is_active: true
+                }
+            });
+
+            // Get usage stats
+            const usageStats = await API.findAll({
                 where: whereClause,
                 attributes: [
-                    [sequelize.fn('COUNT', sequelize.col('id')), 'totalKeys'],
-                    [sequelize.fn('SUM', sequelize.col('usage_count')), 'totalRequests'],
-                    [sequelize.fn('COUNT', sequelize.literal('CASE WHEN is_active = true THEN 1 END')), 'activeKeys'],
-                    [sequelize.fn('MAX', sequelize.col('last_used_at')), 'lastActivity']
+                    [API.sequelize.fn('SUM', API.sequelize.col('usage_count')), 'totalRequests'],
+                    [API.sequelize.fn('MAX', API.sequelize.col('last_used_at')), 'lastActivity']
                 ],
                 raw: true
             });
 
             return {
-                totalKeys: parseInt(stats[0].totalKeys) || 0,
-                activeKeys: parseInt(stats[0].activeKeys) || 0,
-                totalRequests: parseInt(stats[0].totalRequests) || 0,
-                lastActivity: stats[0].lastActivity
+                totalKeys: totalKeys || 0,
+                activeKeys: activeKeys || 0,
+                totalRequests: parseInt(usageStats[0]?.totalRequests) || 0,
+                lastActivity: usageStats[0]?.lastActivity
             };
         } catch (error) {
             console.error('❌ Get API stats error:', error);
-            throw new Error('Failed to fetch API statistics');
+            return {
+                totalKeys: 0,
+                activeKeys: 0,
+                totalRequests: 0,
+                lastActivity: null
+            };
+        }
+    }
+
+    /**
+     * Validate API key and get user
+     */
+    async validateApiKey(apiKey) {
+        try {
+            const keyRecord = await API.findValidKey(apiKey);
+
+            if (!keyRecord) {
+                return { valid: false, error: 'Invalid or expired API key' };
+            }
+
+            return {
+                valid: true,
+                apiKey: keyRecord,
+                user: keyRecord.user
+            };
+        } catch (error) {
+            console.error('❌ Validate API key error:', error);
+            return { valid: false, error: 'Validation failed' };
+        }
+    }
+
+    /**
+     * Record API key usage
+     */
+    async recordUsage(apiKeyId) {
+        try {
+            await API.increment(['usage_count'], {
+                where: { id: apiKeyId }
+            });
+
+            await API.update(
+                { last_used_at: new Date() },
+                { where: { id: apiKeyId } }
+            );
+
+            return true;
+        } catch (error) {
+            console.error('❌ Record usage error:', error);
+            return false;
         }
     }
 }
