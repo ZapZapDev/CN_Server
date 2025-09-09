@@ -20,7 +20,10 @@ import {
     deleteTable,
     createMenu,
     getMenus,
-    deleteMenu
+    deleteMenu,
+    createQRCode,
+    getQRCodes,
+    deleteQRCode
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
@@ -28,12 +31,13 @@ import MarketNetwork from './src/models/MarketNetwork.js';
 import Market from './src/models/Market.js';
 import Table from './src/models/Table.js';
 import Menu from './src/models/Menu.js';
-import API from './src/models/API.js';  // NEW IMPORT
+import API from './src/models/API.js';
 import authService from './src/services/authService.js';
-import apiService from './src/services/apiService.js';  // NEW IMPORT
+import apiService from './src/services/apiService.js';
+import QRCode from './src/models/QRCode.js';
 
 // API Routes Import
-import apiV1Routes from './src/api/routes/v1.js';  // NEW IMPORT
+import apiV1Routes from './src/api/routes/v1.js';
 
 const app = express();
 
@@ -210,6 +214,8 @@ app.use((error, req, res, next) => {
 
 const port = config.port;
 
+await QRCode.sync({ force: false, alter: true });
+console.log('✅ QR Codes table ready');
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
         console.log('🚀 CryptoNow Server with API Access Started');
