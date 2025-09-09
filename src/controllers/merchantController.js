@@ -1,3 +1,4 @@
+// src/controllers/merchantController.js - ИСПРАВЛЕННАЯ ВЕРСИЯ
 import { Op } from 'sequelize';
 import User from '../models/User.js';
 import MarketNetwork from '../models/MarketNetwork.js';
@@ -198,7 +199,6 @@ export async function updateMarketNetwork(req, res) {
     }
 }
 
-// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteMarketNetwork(req, res) {
     try {
         const { id } = req.params;
@@ -426,7 +426,6 @@ export async function updateMarket(req, res) {
     }
 }
 
-// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteMarket(req, res) {
     try {
         const { id } = req.params;
@@ -597,7 +596,6 @@ export async function getTables(req, res) {
     }
 }
 
-// ИЗМЕНЕНО: Реальное удаление из БД
 export async function deleteTable(req, res) {
     try {
         const { id } = req.params;
@@ -798,172 +796,172 @@ export async function deleteMenu(req, res) {
             error: 'Server error'
         });
     }
+}
 
-    // =================== QR CODES ===================
+// =================== QR CODES ===================
 
-    export async function createQRCode(req, res) {
-        try {
-            const { name, marketNetworkId } = req.body;
+export async function createQRCode(req, res) {
+    try {
+        const { name, marketNetworkId } = req.body;
 
-            if (!name || !name.trim() || !marketNetworkId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Name and marketNetworkId are required'
-                });
-            }
-
-            const user = await getAuthenticatedUser(req);
-            if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Authentication required'
-                });
-            }
-
-            // Verify network ownership
-            const network = await MarketNetwork.findOne({
-                where: {
-                    id: parseInt(marketNetworkId),
-                    user_id: user.id
-                }
+        if (!name || !name.trim() || !marketNetworkId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Name and marketNetworkId are required'
             });
+        }
 
-            if (!network) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Network not found'
-                });
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Verify network ownership
+        const network = await MarketNetwork.findOne({
+            where: {
+                id: parseInt(marketNetworkId),
+                user_id: user.id
             }
+        });
 
-            const qrCode = await QRCode.create({
-                name: name.trim(),
+        if (!network) {
+            return res.status(404).json({
+                success: false,
+                error: 'Network not found'
+            });
+        }
+
+        const qrCode = await QRCode.create({
+            name: name.trim(),
+            user_id: user.id,
+            market_network_id: network.id
+        });
+
+        console.log('✅ QR Code created:', qrCode.qr_id, 'for network:', network.id);
+
+        res.json({
+            success: true,
+            data: {
+                qrId: qrCode.qr_id,
+                name: qrCode.name,
+                marketNetworkId: qrCode.market_network_id,
+                qrUrl: `https://cryptonow.com/${qrCode.qr_id}`,
+                createdAt: qrCode.created_at
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Create QR Code error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+}
+
+export async function getQRCodes(req, res) {
+    try {
+        const { networkId } = req.params;
+
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Verify network ownership
+        const network = await MarketNetwork.findOne({
+            where: {
+                id: parseInt(networkId),
+                user_id: user.id
+            }
+        });
+
+        if (!network) {
+            return res.status(404).json({
+                success: false,
+                error: 'Network not found'
+            });
+        }
+
+        const qrCodes = await QRCode.findAll({
+            where: {
+                market_network_id: network.id,
                 user_id: user.id,
-                market_network_id: network.id
-            });
+                is_active: true
+            },
+            order: [['created_at', 'DESC']]
+        });
 
-            console.log('✅ QR Code created:', qrCode.qr_id, 'for network:', network.id);
+        res.json({
+            success: true,
+            data: qrCodes.map(qr => ({
+                qrId: qr.qr_id,
+                name: qr.name,
+                qrUrl: `https://cryptonow.com/${qr.qr_id}`,
+                createdAt: qr.created_at
+            }))
+        });
 
-            res.json({
-                success: true,
-                data: {
-                    qrId: qrCode.qr_id,
-                    name: qrCode.name,
-                    marketNetworkId: qrCode.market_network_id,
-                    qrUrl: `https://cryptonow.com/${qrCode.qr_id}`,
-                    createdAt: qrCode.created_at
-                }
-            });
-
-        } catch (error) {
-            console.error('❌ Create QR Code error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Server error'
-            });
-        }
+    } catch (error) {
+        console.error('❌ Get QR Codes error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
     }
+}
 
-    export async function getQRCodes(req, res) {
-        try {
-            const { networkId } = req.params;
+export async function deleteQRCode(req, res) {
+    try {
+        const { id } = req.params;
 
-            const user = await getAuthenticatedUser(req);
-            if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Authentication required'
-                });
-            }
-
-            // Verify network ownership
-            const network = await MarketNetwork.findOne({
-                where: {
-                    id: parseInt(networkId),
-                    user_id: user.id
-                }
-            });
-
-            if (!network) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Network not found'
-                });
-            }
-
-            const qrCodes = await QRCode.findAll({
-                where: {
-                    market_network_id: network.id,
-                    user_id: user.id,
-                    is_active: true
-                },
-                order: [['created_at', 'DESC']]
-            });
-
-            res.json({
-                success: true,
-                data: qrCodes.map(qr => ({
-                    qrId: qr.qr_id,
-                    name: qr.name,
-                    qrUrl: `https://cryptonow.com/${qr.qr_id}`,
-                    createdAt: qr.created_at
-                }))
-            });
-
-        } catch (error) {
-            console.error('❌ Get QR Codes error:', error);
-            res.status(500).json({
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({
                 success: false,
-                error: 'Server error'
+                error: 'Authentication required'
             });
         }
-    }
 
-    export async function deleteQRCode(req, res) {
-        try {
-            const { id } = req.params;
-
-            const user = await getAuthenticatedUser(req);
-            if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Authentication required'
-                });
+        const qrCode = await QRCode.findOne({
+            where: {
+                qr_id: parseInt(id),
+                user_id: user.id,
+                is_active: true
             }
+        });
 
-            const qrCode = await QRCode.findOne({
-                where: {
-                    qr_id: parseInt(id),
-                    user_id: user.id,
-                    is_active: true
-                }
-            });
-
-            if (!qrCode) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'QR Code not found'
-                });
-            }
-
-            // Soft delete - mark as inactive
-            await qrCode.update({
-                is_active: false,
-                deleted_at: new Date()
-            });
-
-            console.log('🗑️ QR Code soft deleted:', qrCode.qr_id, 'name:', qrCode.name);
-
-            res.json({
-                success: true,
-                message: 'QR Code deleted successfully'
-            });
-
-        } catch (error) {
-            console.error('❌ Delete QR Code error:', error);
-            res.status(500).json({
+        if (!qrCode) {
+            return res.status(404).json({
                 success: false,
-                error: 'Server error'
+                error: 'QR Code not found'
             });
         }
+
+        // Soft delete - mark as inactive
+        await qrCode.update({
+            is_active: false,
+            deleted_at: new Date()
+        });
+
+        console.log('🗑️ QR Code soft deleted:', qrCode.qr_id, 'name:', qrCode.name);
+
+        res.json({
+            success: true,
+            message: 'QR Code deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Delete QR Code error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
     }
 }
