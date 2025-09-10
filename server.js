@@ -1,10 +1,10 @@
-// server.js - UPDATED WITH API INTEGRATION
+// server.js - UPDATED WITH QR CODE ENDPOINTS
 import express from 'express';
 import { config } from './src/config/index.js';
 import paymentController from './src/controllers/paymentController.js';
 import {
     login, validate, logout, getSessions, getSecurityStats,
-    getApiKeys, createApiKey, deleteApiKey  // NEW IMPORTS
+    getApiKeys, createApiKey, deleteApiKey
 } from './src/controllers/authController.js';
 import {
     createMarketNetwork,
@@ -21,9 +21,9 @@ import {
     createMenu,
     getMenus,
     deleteMenu,
-    createQRCode,
-    getQRCodes,
-    deleteQRCode
+    createQRCode,      // ✅ ИМПОРТ ЕСТЬ
+    getQRCodes,       // ✅ ИМПОРТ ЕСТЬ
+    deleteQRCode      // ✅ ИМПОРТ ЕСТЬ
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
@@ -46,7 +46,7 @@ app.set('trust proxy', true);
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');  // UPDATED
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
     if (req.method === 'OPTIONS') return res.status(200).end();
     next();
 });
@@ -67,7 +67,7 @@ async function initDatabase() {
         await User.sync({ force: false, alter: true });
         console.log('✅ Users table ready (multi-device support)');
 
-        await API.sync({ force: false, alter: true });  // NEW
+        await API.sync({ force: false, alter: true });
         console.log('✅ API Keys table ready');
 
         await MarketNetwork.sync({ force: false, alter: true });
@@ -81,6 +81,9 @@ async function initDatabase() {
 
         await Menu.sync({ force: false, alter: true });
         console.log('✅ Menus table ready');
+
+        await QRCode.sync({ force: false, alter: true });
+        console.log('✅ QR Codes table ready');
 
         // Show SERVER_SECRET status
         const hasSecret = !!process.env.SERVER_SECRET;
@@ -97,13 +100,13 @@ function startCleanup() {
 
     setInterval(async () => {
         await authService.cleanupSessions();
-        await apiService.cleanupExpiredKeys();  // NEW
+        await apiService.cleanupExpiredKeys();
     }, 8 * 60 * 60 * 1000);
 
     // First cleanup after 10 minutes
     setTimeout(async () => {
         await authService.cleanupSessions();
-        await apiService.cleanupExpiredKeys();  // NEW
+        await apiService.cleanupExpiredKeys();
     }, 10 * 60 * 1000);
 }
 
@@ -111,7 +114,7 @@ app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "6.0.0-with-api",  // UPDATED VERSION
+        version: "6.1.0-with-qr-codes", // ✅ ОБНОВЛЕННАЯ ВЕРСИЯ
         features: {
             multiDevice: true,
             hmacSecurity: true,
@@ -120,9 +123,10 @@ app.get('/', (req, res) => {
             merchantSystem: true,
             tablesSupport: true,
             menusSupport: true,
+            qrCodesSupport: true, // ✅ НОВАЯ ФИЧА
             deleteSupport: true,
-            apiAccess: true,  // NEW
-            apiKeyManagement: true  // NEW
+            apiAccess: true,
+            apiKeyManagement: true
         }
     });
 });
@@ -130,7 +134,7 @@ app.get('/', (req, res) => {
 app.get('/api/test', (req, res) => {
     res.json({
         success: true,
-        message: 'CryptoNow Server with API Access ready',
+        message: 'CryptoNow Server with QR Codes ready', // ✅ ОБНОВЛЕНО
         auth: {
             multiDevice: 'enabled',
             hmacValidation: 'enabled',
@@ -142,10 +146,11 @@ app.get('/api/test', (req, res) => {
             markets: 'enabled',
             tables: 'enabled',
             menus: 'enabled',
+            qrCodes: 'enabled', // ✅ НОВАЯ ФИЧА
             ownershipValidation: 'enabled',
             deleteSupport: 'enabled'
         },
-        api: {  // NEW
+        api: {
             version: 'v1',
             authentication: 'api-key',
             rateLimit: 'per-key',
@@ -160,7 +165,7 @@ app.post('/api/auth/validate', validate);
 app.post('/api/auth/logout', logout);
 app.post('/api/auth/sessions', getSessions);
 
-// ============ API KEY MANAGEMENT ENDPOINTS ============  // NEW SECTION
+// ============ API KEY MANAGEMENT ENDPOINTS ============
 app.post('/api/auth/api-keys', getApiKeys);
 app.post('/api/auth/api-keys/create', createApiKey);
 app.post('/api/auth/api-keys/delete', deleteApiKey);
@@ -188,7 +193,12 @@ app.post('/api/merchant/menus', createMenu);
 app.post('/api/merchant/menus/:networkId/list', getMenus);
 app.delete('/api/merchant/menus/:id', deleteMenu);
 
-// ============ EXTERNAL API ENDPOINTS ============  // NEW SECTION
+// ============ QR CODE ENDPOINTS ============ ✅ ДОБАВЛЕНО
+app.post('/api/merchant/qr-codes', createQRCode);
+app.post('/api/merchant/qr-codes/:networkId/list', getQRCodes);
+app.delete('/api/merchant/qr-codes/:id', deleteQRCode);
+
+// ============ EXTERNAL API ENDPOINTS ============
 app.use('/api/v1', apiV1Routes);
 
 // ============ PAYMENT ENDPOINTS ============
@@ -214,18 +224,18 @@ app.use((error, req, res, next) => {
 
 const port = config.port;
 
-await QRCode.sync({ force: false, alter: true });
-console.log('✅ QR Codes table ready');
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
-        console.log('🚀 CryptoNow Server with API Access Started');
+        console.log('🚀 CryptoNow Server with QR Codes Started'); // ✅ ОБНОВЛЕНО
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
         console.log('🔑 API Endpoints:');
         console.log(`   GET ${config.baseUrl}/api/v1/health`);
         console.log(`   GET ${config.baseUrl}/api/v1/market-networks`);
         console.log(`   GET ${config.baseUrl}/api/v1/market-networks/:id`);
-        console.log('📚 API Documentation: Use Postman with X-API-Key header');
+        console.log(`   POST ${config.baseUrl}/api/merchant/qr-codes`);
+        console.log(`   POST ${config.baseUrl}/api/merchant/qr-codes/:networkId/list`);
+        console.log(`   DELETE ${config.baseUrl}/api/merchant/qr-codes/:id`);
         startCleanup();
     });
 });
