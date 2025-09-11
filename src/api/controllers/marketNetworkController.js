@@ -1,7 +1,6 @@
-// src/api/controllers/marketNetworkController.js
+// src/api/controllers/marketNetworkController.js - CLEAN VERSION
 import MarketNetwork from '../../models/MarketNetwork.js';
-import Market from '../../models/Market.js';
-import Menu from '../../models/Menu.js';
+import QRCode from '../../models/QRCode.js';
 
 /**
  * Get all market networks for the authenticated user
@@ -17,22 +16,16 @@ export async function getMarketNetworks(req, res) {
             },
             include: [
                 {
-                    model: Market,
-                    as: 'markets',
+                    model: QRCode,
+                    as: 'qrCodes',
                     required: false,
-                    attributes: ['id', 'name', 'created_at']
-                },
-                {
-                    model: Menu,
-                    as: 'menus',
-                    required: false,
-                    attributes: ['id', 'name', 'created_at']
+                    where: { is_active: true },
+                    attributes: ['qr_id', 'name', 'created_at']
                 }
             ],
             order: [
                 ['created_at', 'DESC'],
-                [{ model: Market, as: 'markets' }, 'created_at', 'DESC'],
-                [{ model: Menu, as: 'menus' }, 'created_at', 'DESC']
+                [{ model: QRCode, as: 'qrCodes' }, 'created_at', 'DESC']
             ]
         });
 
@@ -43,20 +36,12 @@ export async function getMarketNetworks(req, res) {
             description: network.description,
             createdAt: network.created_at,
             updatedAt: network.updated_at,
-            markets: {
-                count: network.markets?.length || 0,
-                items: network.markets?.map(market => ({
-                    id: market.id,
-                    name: market.name,
-                    createdAt: market.created_at
-                })) || []
-            },
-            menus: {
-                count: network.menus?.length || 0,
-                items: network.menus?.map(menu => ({
-                    id: menu.id,
-                    name: menu.name,
-                    createdAt: menu.created_at
+            qrCodes: {
+                count: network.qrCodes?.length || 0,
+                items: network.qrCodes?.map(qr => ({
+                    qrId: qr.qr_id,
+                    name: qr.name,
+                    createdAt: qr.created_at
                 })) || []
             }
         }));
@@ -99,16 +84,11 @@ export async function getMarketNetwork(req, res) {
             },
             include: [
                 {
-                    model: Market,
-                    as: 'markets',
+                    model: QRCode,
+                    as: 'qrCodes',
                     required: false,
-                    attributes: ['id', 'name', 'created_at']
-                },
-                {
-                    model: Menu,
-                    as: 'menus',
-                    required: false,
-                    attributes: ['id', 'name', 'created_at']
+                    where: { is_active: true },
+                    attributes: ['qr_id', 'name', 'created_at']
                 }
             ]
         });
@@ -129,20 +109,12 @@ export async function getMarketNetwork(req, res) {
                 description: network.description,
                 createdAt: network.created_at,
                 updatedAt: network.updated_at,
-                markets: {
-                    count: network.markets?.length || 0,
-                    items: network.markets?.map(market => ({
-                        id: market.id,
-                        name: market.name,
-                        createdAt: market.created_at
-                    })) || []
-                },
-                menus: {
-                    count: network.menus?.length || 0,
-                    items: network.menus?.map(menu => ({
-                        id: menu.id,
-                        name: menu.name,
-                        createdAt: menu.created_at
+                qrCodes: {
+                    count: network.qrCodes?.length || 0,
+                    items: network.qrCodes?.map(qr => ({
+                        qrId: qr.qr_id,
+                        name: qr.name,
+                        createdAt: qr.created_at
                     })) || []
                 }
             },

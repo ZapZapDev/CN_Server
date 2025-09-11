@@ -1,4 +1,4 @@
-// src/models/MarketNetwork.js
+// src/models/MarketNetwork.js - CLEAN VERSION (only QRCode relation)
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 import User from './User.js';

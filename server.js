@@ -1,4 +1,4 @@
-// server.js - UPDATED WITH QR CODE ENDPOINTS
+// server.js - CLEAN VERSION (only MarketNetwork + QRCode)
 import express from 'express';
 import { config } from './src/config/index.js';
 import paymentController from './src/controllers/paymentController.js';
@@ -11,26 +11,13 @@ import {
     getMarketNetworks,
     updateMarketNetwork,
     deleteMarketNetwork,
-    createMarket,
-    getMarkets,
-    updateMarket,
-    deleteMarket,
-    createTable,
-    getTables,
-    deleteTable,
-    createMenu,
-    getMenus,
-    deleteMenu,
-    createQRCode,      // ✅ ИМПОРТ ЕСТЬ
-    getQRCodes,       // ✅ ИМПОРТ ЕСТЬ
-    deleteQRCode      // ✅ ИМПОРТ ЕСТЬ
+    createQRCode,
+    getQRCodes,
+    deleteQRCode
 } from './src/controllers/merchantController.js';
 import sequelize from './src/config/database.js';
 import User from './src/models/User.js';
 import MarketNetwork from './src/models/MarketNetwork.js';
-import Market from './src/models/Market.js';
-import Table from './src/models/Table.js';
-import Menu from './src/models/Menu.js';
 import API from './src/models/API.js';
 import authService from './src/services/authService.js';
 import apiService from './src/services/apiService.js';
@@ -73,15 +60,6 @@ async function initDatabase() {
         await MarketNetwork.sync({ force: false, alter: true });
         console.log('✅ MarketNetworks table ready');
 
-        await Market.sync({ force: false, alter: true });
-        console.log('✅ Markets table ready');
-
-        await Table.sync({ force: false, alter: true });
-        console.log('✅ Tables table ready');
-
-        await Menu.sync({ force: false, alter: true });
-        console.log('✅ Menus table ready');
-
         await QRCode.sync({ force: false, alter: true });
         console.log('✅ QR Codes table ready');
 
@@ -114,16 +92,14 @@ app.get('/', (req, res) => {
     res.json({
         name: "CryptoNow Server",
         status: "running",
-        version: "6.1.0-with-qr-codes", // ✅ ОБНОВЛЕННАЯ ВЕРСИЯ
+        version: "7.0.0-simplified",
         features: {
             multiDevice: true,
             hmacSecurity: true,
             autoExtension: true,
             ipFlexible: true,
             merchantSystem: true,
-            tablesSupport: true,
-            menusSupport: true,
-            qrCodesSupport: true, // ✅ НОВАЯ ФИЧА
+            qrCodesSupport: true,
             deleteSupport: true,
             apiAccess: true,
             apiKeyManagement: true
@@ -134,7 +110,7 @@ app.get('/', (req, res) => {
 app.get('/api/test', (req, res) => {
     res.json({
         success: true,
-        message: 'CryptoNow Server with QR Codes ready', // ✅ ОБНОВЛЕНО
+        message: 'CryptoNow Server Simplified ready',
         auth: {
             multiDevice: 'enabled',
             hmacValidation: 'enabled',
@@ -143,10 +119,7 @@ app.get('/api/test', (req, res) => {
         },
         merchant: {
             marketNetworks: 'enabled',
-            markets: 'enabled',
-            tables: 'enabled',
-            menus: 'enabled',
-            qrCodes: 'enabled', // ✅ НОВАЯ ФИЧА
+            qrCodes: 'enabled',
             ownershipValidation: 'enabled',
             deleteSupport: 'enabled'
         },
@@ -177,23 +150,7 @@ app.post('/api/merchant/networks/list', getMarketNetworks);
 app.put('/api/merchant/networks/:id', updateMarketNetwork);
 app.delete('/api/merchant/networks/:id', deleteMarketNetwork);
 
-// Market CRUD
-app.post('/api/merchant/markets', createMarket);
-app.post('/api/merchant/markets/:networkId/list', getMarkets);
-app.put('/api/merchant/markets/:id', updateMarket);
-app.delete('/api/merchant/markets/:id', deleteMarket);
-
-// Table CRUD
-app.post('/api/merchant/tables', createTable);
-app.post('/api/merchant/tables/:marketId/list', getTables);
-app.delete('/api/merchant/tables/:id', deleteTable);
-
-// Menu CRUD
-app.post('/api/merchant/menus', createMenu);
-app.post('/api/merchant/menus/:networkId/list', getMenus);
-app.delete('/api/merchant/menus/:id', deleteMenu);
-
-// ============ QR CODE ENDPOINTS ============ ✅ ДОБАВЛЕНО
+// QR Code CRUD
 app.post('/api/merchant/qr-codes', createQRCode);
 app.post('/api/merchant/qr-codes/:networkId/list', getQRCodes);
 app.delete('/api/merchant/qr-codes/:id', deleteQRCode);
@@ -226,7 +183,7 @@ const port = config.port;
 
 initDatabase().then(() => {
     app.listen(port, '0.0.0.0', () => {
-        console.log('🚀 CryptoNow Server with QR Codes Started'); // ✅ ОБНОВЛЕНО
+        console.log('🚀 CryptoNow Server Simplified Started');
         console.log(`📍 Port: ${port}`);
         console.log(`🌐 URL: ${config.baseUrl}`);
         console.log('🔑 API Endpoints:');
