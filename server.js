@@ -72,6 +72,7 @@ async function initDatabase() {
     }
 }
 
+
 // Auto-cleanup every 8 hours
 function startCleanup() {
     console.log('🧹 Auto-cleanup enabled (every 8 hours)');

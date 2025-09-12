@@ -1,7 +1,10 @@
-// src/controllers/authController.js - COMPLETE ENHANCED VERSION
+// src/controllers/authController.js
 import authService from '../services/authService.js';
 import apiService from '../services/apiService.js';
 
+/**
+ * Получение IP клиента
+ */
 async function getClientIp(req) {
     const headers = [
         req.get('CF-Connecting-IP'),
@@ -21,223 +24,117 @@ async function getClientIp(req) {
     return req.ip || req.connection?.remoteAddress || '127.0.0.1';
 }
 
+/**
+ * Хелпер для ответа с ошибкой
+ */
+function errorResponse(res, code, message) {
+    return res.status(code).json({ success: false, error: message });
+}
+
+/**
+ * Авторизация
+ */
 export const login = async (req, res) => {
     try {
         const { walletAddress, extendedSession } = req.body;
-
         if (!walletAddress || walletAddress.length !== 44) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid wallet address'
-            });
+            return errorResponse(res, 400, 'Invalid wallet address');
         }
 
         const clientIp = await getClientIp(req);
         const userAgent = req.get('User-Agent');
 
-        console.log('🔐 Login attempt:', {
-            wallet: walletAddress.slice(0, 8) + '...',
-            ip: clientIp,
-            userAgent: userAgent?.slice(0, 50) + '...'
-        });
-
         const result = await authService.login(walletAddress, clientIp, userAgent, extendedSession);
-
-        if (result.success) {
-            console.log('✅ Login successful, generating API key...');
-
-            // ENHANCED: Guaranteed API key generation with multiple fallback attempts
-            let apiKeyData = null;
-            let apiKeyError = null;
-
-            try {
-                const user = await authService.getUserByWallet(walletAddress);
-
-                if (!user) {
-                    throw new Error('User not found after successful login');
-                }
-
-                console.log('👤 Found user ID:', user.id);
-
-                // Try to ensure API key exists with retries
-                let attempts = 0;
-                const maxAttempts = 3;
-
-                while (attempts < maxAttempts && !apiKeyData) {
-                    attempts++;
-                    console.log(`🔑 API key generation attempt ${attempts}/${maxAttempts}`);
-
-                    try {
-                        const apiKey = await apiService.ensureUserApiKey(
-                            user.id,
-                            `Auto-generated API Key (${new Date().toISOString().split('T')[0]})`
-                        );
-
-                        if (apiKey && apiKey.api_key) {
-                            apiKeyData = {
-                                key: apiKey.api_key,
-                                name: apiKey.name,
-                                rateLimit: apiKey.rate_limit,
-                                isActive: apiKey.is_active,
-                                createdAt: apiKey.created_at,
-                                usageCount: apiKey.usage_count || 0
-                            };
-
-                            console.log('✅ API key generated successfully:', {
-                                keyPreview: apiKey.api_key.substring(0, 12) + '...',
-                                name: apiKey.name,
-                                rateLimit: apiKey.rate_limit
-                            });
-                            break;
-                        }
-                    } catch (attemptError) {
-                        console.error(`❌ API key attempt ${attempts} failed:`, attemptError.message);
-                        apiKeyError = attemptError;
-
-                        if (attempts < maxAttempts) {
-                            console.log('⏰ Waiting 1 second before retry...');
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                        }
-                    }
-                }
-
-                if (!apiKeyData) {
-                    throw new Error(`Failed to generate API key after ${maxAttempts} attempts: ${apiKeyError?.message}`);
-                }
-
-            } catch (error) {
-                console.error('❌ API key generation failed:', error);
-                apiKeyError = error;
-
-                // FALLBACK: Try direct API key creation
-                try {
-                    console.log('🔄 Attempting fallback API key creation...');
-                    const user = await authService.getUserByWallet(walletAddress);
-
-                    if (user) {
-                        const fallbackApiKey = await apiService.createApiKey(
-                            user.id,
-                            'Fallback Auto-generated Key',
-                            1000,
-                            null
-                        );
-
-                        apiKeyData = {
-                            key: fallbackApiKey.apiKey,
-                            name: fallbackApiKey.name,
-                            rateLimit: fallbackApiKey.rateLimit,
-                            isActive: true,
-                            createdAt: fallbackApiKey.createdAt,
-                            usageCount: 0
-                        };
-
-                        console.log('✅ Fallback API key created successfully');
-                    }
-                } catch (fallbackError) {
-                    console.error('❌ Fallback API key creation also failed:', fallbackError);
-                    // Don't fail login even if API key creation fails completely
-                }
-            }
-
-            // Prepare response
-            const response = {
-                success: true,
-                sessionKey: result.sessionKey,
-                deviceHash: result.deviceHash,
-                expiresAt: result.expiresAt,
-                isNewUser: result.isNewUser,
-                features: {
-                    multiDevice: true,
-                    autoExtension: true,
-                    hmacSecurity: true,
-                    apiAccess: !!apiKeyData // true if API key was generated
-                }
-            };
-
-            // Include API key if successfully generated
-            if (apiKeyData) {
-                response.apiKey = apiKeyData;
-                console.log('🎉 Login response includes API key');
-            } else {
-                response.apiKeyError = 'API key generation failed, but login succeeded';
-                console.log('⚠️ Login succeeded but without API key');
-            }
-
-            res.json(response);
-
-        } else {
-            console.log('❌ Login failed:', result.error);
-            res.status(401).json(result);
+        if (!result.success) {
+            return res.status(401).json(result);
         }
 
-    } catch (error) {
-        console.error('❌ Login controller error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server error during login'
+        let apiKeyData = null;
+        try {
+            const user = await authService.getUserByWallet(walletAddress);
+            if (user) {
+                apiKeyData = await apiService.ensureUserApiKey(
+                    user.id,
+                    `Auto-generated API Key (${new Date().toISOString().split('T')[0]})`
+                );
+            }
+        } catch (error) {
+            console.error('API key generation failed:', error.message);
+            // login всё равно успешный → не падаем
+        }
+
+        res.json({
+            success: true,
+            sessionKey: result.sessionKey,
+            deviceHash: result.deviceHash,
+            expiresAt: result.expiresAt,
+            isNewUser: result.isNewUser,
+            features: {
+                multiDevice: true,
+                autoExtension: true,
+                hmacSecurity: true,
+                apiAccess: !!apiKeyData
+            },
+            ...(apiKeyData ? { apiKey: apiKeyData } : { apiKeyError: 'API key not generated' })
         });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        return errorResponse(res, 500, 'Server error during login');
     }
 };
 
+/**
+ * Валидация сессии
+ */
 export const validate = async (req, res) => {
     try {
         const { walletAddress, sessionKey } = req.body;
-
         if (!walletAddress || !sessionKey) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing data'
-            });
+            return errorResponse(res, 400, 'Missing data');
         }
 
         const clientIp = await getClientIp(req);
         const userAgent = req.get('User-Agent');
 
         const result = await authService.validateSession(walletAddress, sessionKey, clientIp, userAgent);
-
-        if (result.success) {
-            // Check if user has API key during validation
-            let hasApiKey = false;
-            try {
-                const user = await authService.getUserByWallet(walletAddress);
-                if (user) {
-                    const apiKeys = await apiService.getUserApiKeys(user.id);
-                    hasApiKey = apiKeys.some(key => key.isActive);
-                }
-            } catch (error) {
-                console.error('❌ API key check during validation failed:', error);
-            }
-
-            res.json({
-                ...result,
-                security: {
-                    hmacVerified: true,
-                    deviceBound: true,
-                    apiEnabled: hasApiKey
-                }
-            });
-        } else {
-            res.status(401).json(result);
+        if (!result.success) {
+            return res.status(401).json(result);
         }
 
-    } catch (error) {
-        console.error('❌ Validation error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server error'
+        let hasApiKey = false;
+        try {
+            const user = await authService.getUserByWallet(walletAddress);
+            if (user) {
+                const apiKeys = await apiService.getUserApiKeys(user.id);
+                hasApiKey = apiKeys.some(key => key.isActive);
+            }
+        } catch (error) {
+            console.error('API key check failed:', error.message);
+        }
+
+        res.json({
+            ...result,
+            security: {
+                hmacVerified: true,
+                deviceBound: true,
+                apiEnabled: hasApiKey
+            }
         });
+    } catch (error) {
+        console.error('Validation error:', error);
+        return errorResponse(res, 500, 'Server error');
     }
 };
 
+/**
+ * Логаут
+ */
 export const logout = async (req, res) => {
     try {
         const { walletAddress, deviceHash, allDevices } = req.body;
-
         if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing wallet address'
-            });
+            return errorResponse(res, 400, 'Missing wallet address');
         }
 
         const result = await authService.logout(walletAddress, allDevices ? null : deviceHash);
@@ -246,34 +143,25 @@ export const logout = async (req, res) => {
             ...result,
             loggedOut: allDevices ? 'all_devices' : 'current_device'
         });
-
     } catch (error) {
-        console.error('❌ Logout error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server error'
-        });
+        console.error('Logout error:', error);
+        return errorResponse(res, 500, 'Server error');
     }
 };
 
-// API Key Management Endpoints
+/**
+ * Получение API-ключей
+ */
 export const getApiKeys = async (req, res) => {
     try {
         const { walletAddress } = req.body;
-
         if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing wallet address'
-            });
+            return errorResponse(res, 400, 'Missing wallet address');
         }
 
         const user = await authService.getUserByWallet(walletAddress);
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                error: 'User not found'
-            });
+            return errorResponse(res, 404, 'User not found');
         }
 
         const apiKeys = await apiService.getUserApiKeys(user.id);
@@ -284,132 +172,90 @@ export const getApiKeys = async (req, res) => {
             count: apiKeys.length,
             activeCount: apiKeys.filter(key => key.isActive).length
         });
-
     } catch (error) {
-        console.error('❌ Get API keys error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server error'
-        });
+        console.error('Get API keys error:', error);
+        return errorResponse(res, 500, 'Server error');
     }
 };
 
+/**
+ * Создание API-ключа
+ */
 export const createApiKey = async (req, res) => {
     try {
         const { walletAddress, name, rateLimit } = req.body;
-
         if (!walletAddress || !name) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields'
-            });
+            return errorResponse(res, 400, 'Missing required fields');
         }
 
         const user = await authService.getUserByWallet(walletAddress);
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                error: 'User not found'
-            });
+            return errorResponse(res, 404, 'User not found');
         }
 
         const apiKey = await apiService.createApiKey(user.id, name, rateLimit || 1000);
 
-        res.json({
-            success: true,
-            data: apiKey,
-            message: 'API key created successfully'
-        });
-
+        res.json({ success: true, data: apiKey, message: 'API key created successfully' });
     } catch (error) {
-        console.error('❌ Create API key error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message || 'Server error'
-        });
+        console.error('Create API key error:', error);
+        return errorResponse(res, 500, error.message || 'Server error');
     }
 };
 
+/**
+ * Удаление API-ключа
+ */
 export const deleteApiKey = async (req, res) => {
     try {
         const { walletAddress, apiKeyId } = req.body;
-
         if (!walletAddress || !apiKeyId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields'
-            });
+            return errorResponse(res, 400, 'Missing required fields');
         }
 
         const user = await authService.getUserByWallet(walletAddress);
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                error: 'User not found'
-            });
+            return errorResponse(res, 404, 'User not found');
         }
 
         await apiService.deleteApiKey(user.id, apiKeyId);
 
-        res.json({
-            success: true,
-            message: 'API key deleted successfully'
-        });
-
+        res.json({ success: true, message: 'API key deleted successfully' });
     } catch (error) {
-        console.error('❌ Delete API key error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message || 'Server error'
-        });
+        console.error('Delete API key error:', error);
+        return errorResponse(res, 500, error.message || 'Server error');
     }
 };
 
+/**
+ * Активные сессии
+ */
 export const getSessions = async (req, res) => {
     try {
         const { walletAddress } = req.body;
-
         if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing wallet address'
-            });
+            return errorResponse(res, 400, 'Missing wallet address');
         }
 
         const sessions = await authService.getActiveSessions(walletAddress);
 
-        res.json({
-            success: true,
-            sessions,
-            count: sessions.length
-        });
-
+        res.json({ success: true, sessions, count: sessions.length });
     } catch (error) {
-        console.error('❌ Get sessions error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server error'
-        });
+        console.error('Get sessions error:', error);
+        return errorResponse(res, 500, 'Server error');
     }
 };
 
+/**
+ * Статистика безопасности
+ */
 export const getSecurityStats = async (req, res) => {
     try {
         const stats = await authService.getSecurityStats();
         const apiStats = await apiService.getApiStats();
 
-        res.json({
-            success: true,
-            stats: {
-                ...stats,
-                api: apiStats
-            }
-        });
+        res.json({ success: true, stats: { ...stats, api: apiStats } });
     } catch (error) {
-        console.error('❌ Security stats error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server error'
-        });
+        console.error('Security stats error:', error);
+        return errorResponse(res, 500, 'Server error');
     }
 };
