@@ -1,4 +1,4 @@
-// src/api/controllers/marketNetworkController.js - CLEAN VERSION
+// src/api/controllers/marketNetworkController.js - UPDATED VERSION
 import MarketNetwork from '../../models/MarketNetwork.js';
 import QRCode from '../../models/QRCode.js';
 
@@ -20,7 +20,7 @@ export async function getMarketNetworks(req, res) {
                     as: 'qrCodes',
                     required: false,
                     where: { is_active: true },
-                    attributes: ['qr_id', 'name', 'created_at']
+                    attributes: ['qr_id', 'qr_unique_id', 'sequence_number', 'created_at']
                 }
             ],
             order: [
@@ -38,9 +38,11 @@ export async function getMarketNetworks(req, res) {
             updatedAt: network.updated_at,
             qrCodes: {
                 count: network.qrCodes?.length || 0,
-                items: network.qrCodes?.map(qr => ({
+                items: network.qrCodes?.map((qr, index) => ({
                     qrId: qr.qr_id,
+                    qrUniqueId: qr.qr_unique_id,
                     name: qr.name,
+                    displayName: `QR - ${index + 1} (Id:${qr.qr_unique_id})`,
                     createdAt: qr.created_at
                 })) || []
             }
@@ -88,7 +90,8 @@ export async function getMarketNetwork(req, res) {
                     as: 'qrCodes',
                     required: false,
                     where: { is_active: true },
-                    attributes: ['qr_id', 'name', 'created_at']
+                    attributes: ['qr_id', 'qr_unique_id', 'sequence_number', 'created_at'],
+                    order: [['sequence_number', 'ASC']]
                 }
             ]
         });
@@ -111,9 +114,11 @@ export async function getMarketNetwork(req, res) {
                 updatedAt: network.updated_at,
                 qrCodes: {
                     count: network.qrCodes?.length || 0,
-                    items: network.qrCodes?.map(qr => ({
+                    items: network.qrCodes?.map((qr, index) => ({
                         qrId: qr.qr_id,
-                        name: qr.name,
+                        qrUniqueId: qr.qr_unique_id,
+                        sequenceNumber: qr.sequence_number,
+                        displayName: `${qr.sequence_number} (Id:${qr.qr_unique_id})`,
                         createdAt: qr.created_at
                     })) || []
                 }

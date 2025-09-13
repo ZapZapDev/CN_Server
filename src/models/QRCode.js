@@ -1,4 +1,4 @@
-// src/models/QRCode.js - CLEAN VERSION (only MarketNetwork relation)
+// src/models/QRCode.js - SEQUENCE NUMBER VERSION
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 import User from './User.js';
@@ -10,12 +10,20 @@ const QRCode = sequelize.define('QRCode', {
         primaryKey: true,
         autoIncrement: true
     },
-    name: {
-        type: DataTypes.STRING(255),
+    qr_unique_id: {
+        type: DataTypes.STRING(5),
+        allowNull: false,
+        unique: true,
+        validate: {
+            len: [5, 5],
+            is: /^[A-Z0-9]{5}$/
+        }
+    },
+    sequence_number: {
+        type: DataTypes.INTEGER,
         allowNull: false,
         validate: {
-            notEmpty: true,
-            len: [1, 255]
+            min: 1
         }
     },
     user_id: {
@@ -52,19 +60,67 @@ const QRCode = sequelize.define('QRCode', {
             fields: ['qr_id']
         },
         {
+            name: 'qr_unique_id_index',
+            unique: true,
+            fields: ['qr_unique_id']
+        },
+        {
+            name: 'network_sequence_index',
+            fields: ['market_network_id', 'sequence_number']
+        },
+        {
             fields: ['user_id']
         },
         {
-            fields: ['market_network_id']
-        },
-        {
             fields: ['is_active']
-        },
-        {
-            fields: ['user_id', 'market_network_id']
         }
-    ]
+    ],
+    hooks: {
+        beforeValidate: async (qrCode) => {
+            if (!qrCode.qr_unique_id) {
+                qrCode.qr_unique_id = await QRCode.generateUniqueId();
+            }
+        }
+    }
 });
+
+// Static method for generating unique ID
+QRCode.generateUniqueId = async function() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let attempts = 0;
+    const maxAttempts = 100;
+
+    while (attempts < maxAttempts) {
+        let id = '';
+        for (let i = 0; i < 5; i++) {
+            id += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+
+        const existing = await this.findOne({
+            where: { qr_unique_id: id },
+            attributes: ['qr_unique_id']
+        });
+
+        if (!existing) return id;
+        attempts++;
+    }
+
+    throw new Error('Failed to generate unique QR ID');
+};
+
+// Get next sequence number for network
+QRCode.getNextSequenceNumber = async function(marketNetworkId) {
+    const lastQR = await this.findOne({
+        where: {
+            market_network_id: marketNetworkId,
+            is_active: true
+        },
+        order: [['sequence_number', 'DESC']],
+        attributes: ['sequence_number']
+    });
+
+    return (lastQR?.sequence_number || 0) + 1;
+};
 
 // Relationships
 QRCode.belongsTo(User, {

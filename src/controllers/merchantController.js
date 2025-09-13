@@ -157,9 +157,9 @@ export async function deleteMarketNetwork(req, res) {
 
 export async function createQRCode(req, res) {
     try {
-        const { name, marketNetworkId } = req.body;
-        if (!name?.trim() || !marketNetworkId) {
-            return errorResponse(res, 400, 'Name and marketNetworkId are required');
+        const { quantity, marketNetworkId } = req.body;
+        if (!quantity || !marketNetworkId || quantity < 1 || quantity > 50) {
+            return errorResponse(res, 400, 'Quantity required (1-50) and marketNetworkId required');
         }
 
         const user = await getAuthenticatedUser(req);
@@ -170,22 +170,30 @@ export async function createQRCode(req, res) {
         });
         if (!network) return errorResponse(res, 404, 'Network not found');
 
-        const qrCode = await QRCode.create({
-            name: name.trim(),
-            user_id: user.id,
-            market_network_id: network.id
-        });
+        const createdQRs = [];
+        let nextSequence = await QRCode.getNextSequenceNumber(network.id);
 
-        console.log(`✅ QR Code created [${qrCode.qr_id}] for network [${network.id}]`);
+        for (let i = 0; i < quantity; i++) {
+            const qrCode = await QRCode.create({
+                sequence_number: nextSequence + i,
+                user_id: user.id,
+                market_network_id: network.id
+            });
+            createdQRs.push(qrCode);
+        }
+
+        console.log(`✅ Created ${quantity} QR codes for network [${network.id}]`);
 
         res.json({
             success: true,
             data: {
-                qrId: qrCode.qr_id,
-                name: qrCode.name,
-                marketNetworkId: qrCode.market_network_id,
-                qrUrl: `https://cryptonow.com/${qrCode.qr_id}`,
-                createdAt: qrCode.created_at
+                created: createdQRs.map(qr => ({
+                    qrId: qr.qr_id,
+                    qrUniqueId: qr.qr_unique_id,
+                    sequenceNumber: qr.sequence_number,
+                    marketNetworkId: qr.market_network_id
+                })),
+                count: quantity
             }
         });
     } catch (error) {
@@ -207,15 +215,16 @@ export async function getQRCodes(req, res) {
 
         const qrCodes = await QRCode.findAll({
             where: { market_network_id: network.id, user_id: user.id, is_active: true },
-            order: [['created_at', 'DESC']]
+            order: [['sequence_number', 'ASC']]
         });
 
         res.json({
             success: true,
             data: qrCodes.map(qr => ({
                 qrId: qr.qr_id,
-                name: qr.name,
-                qrUrl: `https://cryptonow.com/${qr.qr_id}`,
+                qrUniqueId: qr.qr_unique_id,
+                sequenceNumber: qr.sequence_number,
+                displayName: `${qr.sequence_number} (Id:${qr.qr_unique_id})`,
                 createdAt: qr.created_at
             }))
         });
