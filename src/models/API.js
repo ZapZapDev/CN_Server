@@ -1,4 +1,4 @@
-// src/models/API.js - CLEAN SENIOR VERSION
+// src/models/API.js - ИСПРАВЛЕННАЯ ВЕРСИЯ (убраны избыточные индексы)
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 import User from './User.js';
@@ -61,11 +61,24 @@ const API = sequelize.define('API', {
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
+    // ИСПРАВЛЕНО: Убираем избыточные индексы, оставляем только критически важные
     indexes: [
-        { unique: true, fields: ['api_key'] },
-        { fields: ['user_id'] },
-        { fields: ['is_active'] },
-        { fields: ['expires_at'] }
+        // Основной индекс для поиска по API ключу
+        {
+            name: 'api_key_unique',
+            unique: true,
+            fields: ['api_key']
+        },
+        // Индекс для поиска ключей пользователя
+        {
+            name: 'user_id_index',
+            fields: ['user_id']
+        },
+        // Композитный индекс для активных ключей пользователя
+        {
+            name: 'user_active_index',
+            fields: ['user_id', 'is_active']
+        }
     ],
     hooks: {
         // Генерация API-ключа перед валидацией

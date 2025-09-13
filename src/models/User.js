@@ -1,3 +1,4 @@
+// src/models/User.js - ИСПРАВЛЕННАЯ ВЕРСИЯ (оптимизированные индексы)
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 
@@ -56,24 +57,23 @@ const User = sequelize.define('User', {
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
+    // ИСПРАВЛЕНО: Минимальное количество критически важных индексов
     indexes: [
+        // Главный уникальный индекс: кошелек + устройство
         {
-            // ГЛАВНЫЙ ИНДЕКС: один кошелек + одно устройство = уникальная сессия
+            name: 'unique_wallet_device',
             unique: true,
-            fields: ['sol_wallet', 'device_hash'],
-            name: 'unique_wallet_device'
+            fields: ['sol_wallet', 'device_hash']
         },
+        // Индекс для поиска активных сессий
         {
-            fields: ['session_key']
+            name: 'active_sessions_index',
+            fields: ['sol_wallet', 'is_active']
         },
+        // Индекс для очистки истекших сессий
         {
-            fields: ['last_ip']
-        },
-        {
-            fields: ['expires_at']
-        },
-        {
-            fields: ['is_active']
+            name: 'expires_cleanup_index',
+            fields: ['expires_at', 'is_active']
         }
     ]
 });

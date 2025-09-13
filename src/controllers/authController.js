@@ -46,8 +46,11 @@ export const login = async (req, res) => {
 
         const result = await authService.login(walletAddress, clientIp, userAgent, extendedSession);
         if (!result.success) {
+            console.log(`❌ Failed login — Wallet: ${walletAddress}, IP: ${clientIp}`);
             return res.status(401).json(result);
         }
+
+        console.log(`✅ Successful login — Wallet: ${walletAddress}, IP: ${clientIp}`);
 
         let apiKeyData = null;
         try {
@@ -60,7 +63,6 @@ export const login = async (req, res) => {
             }
         } catch (error) {
             console.error('API key generation failed:', error.message);
-            // login всё равно успешный → не падаем
         }
 
         res.json({
@@ -137,7 +139,11 @@ export const logout = async (req, res) => {
             return errorResponse(res, 400, 'Missing wallet address');
         }
 
+        const clientIp = await getClientIp(req);
+
         const result = await authService.logout(walletAddress, allDevices ? null : deviceHash);
+
+        console.log(`👋 User logged out — Wallet: ${walletAddress}, IP: ${clientIp}`);
 
         res.json({
             ...result,
